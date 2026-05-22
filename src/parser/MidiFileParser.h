@@ -17,12 +17,18 @@ struct NoteEvent {
     bool played = false;
 };
 
+struct TempoEvent {
+    qint64 tick = 0;
+    int microsecondsPerQuarter = 500000;
+};
+
 struct ParsedMidi {
     bool ok = false;
     QString title;
     QString error;
     int bpm = 120;
     int ppq = 480;
+    QVector<TempoEvent> tempos;
     QVector<NoteEvent> notes;
 };
 

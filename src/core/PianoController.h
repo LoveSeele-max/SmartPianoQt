@@ -102,7 +102,7 @@ private:
     void preparePracticeAtCurrentPosition();
     void evaluatePracticeNote(int midi);
     void advancePracticeTick();
-    void resetPracticeState(bool resetStats);
+    void resetPracticeState(bool resetStats, bool resetPlayed = true);
     void refreshActiveNotes();
     void setPlaying(bool playing);
     void setStatusMessage(const QString &message);
@@ -110,7 +110,6 @@ private:
     void retriggerAutoNoteStarts(qint64 previousTick, qint64 currentTick);
     qint64 beatToTick(double beat) const;
     double tickToBeat(qint64 tick) const;
-    qint64 msToTicks(qint64 elapsedMs) const;
     int velocityForMidi(int midi) const;
 
     static constexpr int DefaultPpq = 480;
@@ -122,6 +121,7 @@ private:
     QVector<qint64> m_practiceTicks;
 
     qint64 m_currentTick = 0;
+    double m_preciseTick = 0.0;
     qint64 m_totalTicks = DefaultPpq * 8;
     qint64 m_maxNoteDurationTick = DefaultPpq * 2;
 

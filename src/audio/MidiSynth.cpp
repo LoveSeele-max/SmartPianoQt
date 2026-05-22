@@ -572,34 +572,40 @@ QString MidiSynth::resolveFluidSynthLibraryPath() const
     const QString envPath = qEnvironmentVariable("FLUIDSYNTH_DLL");
     if (!envPath.isEmpty() && QFileInfo::exists(envPath)) return envPath;
 
-    const QString envPrefix = qEnvironmentVariable("FLUIDSYNTH_PREFIX");
-    if (!envPrefix.isEmpty()) {
-        const QStringList names = {
-            QStringLiteral("libfluidsynth-3.dll"),
-            QStringLiteral("libfluidsynth-2.dll"),
-            QStringLiteral("libfluidsynth.dll")
-        };
-        for (const QString &name : names) {
-            const QString path = QDir(envPrefix).absoluteFilePath(QStringLiteral("bin/%1").arg(name));
-            if (QFileInfo::exists(path)) return path;
-        }
-    }
-
-    const QStringList explicitPaths = {
-        QCoreApplication::applicationDirPath() + QStringLiteral("/libfluidsynth-3.dll"),
-        QCoreApplication::applicationDirPath() + QStringLiteral("/libfluidsynth-2.dll"),
-        QDir::current().absoluteFilePath(QStringLiteral("libfluidsynth-3.dll")),
-        QDir::current().absoluteFilePath(QStringLiteral("libfluidsynth-2.dll")),
-        QStringLiteral("E:/fluidsynth-v2.5.4-win10-x64-cpp11/bin/libfluidsynth-3.dll"),
-        QStringLiteral("E:/fluidsynth-v2.5.4-win10-x64-cpp11/bin/libfluidsynth-2.dll"),
-        QStringLiteral("C:/Program Files/FluidSynth/bin/libfluidsynth-3.dll"),
-        QStringLiteral("C:/Program Files/FluidSynth/bin/libfluidsynth-2.dll"),
-        QStringLiteral("C:/msys64/mingw64/bin/libfluidsynth-3.dll"),
-        QStringLiteral("D:/msys64/mingw64/bin/libfluidsynth-3.dll")
+    const QStringList dllNames = {
+        QStringLiteral("libfluidsynth-3.dll"),
+        QStringLiteral("libfluidsynth-2.dll"),
+        QStringLiteral("libfluidsynth.dll")
     };
 
-    for (const QString &path : explicitPaths) {
-        if (QFileInfo::exists(path)) return path;
+    auto findInDir = [&dllNames](const QString &dirPath) -> QString {
+        if (dirPath.isEmpty()) return {};
+        const QDir dir(dirPath);
+        for (const QString &name : dllNames) {
+            const QString path = dir.absoluteFilePath(name);
+            if (QFileInfo::exists(path)) return path;
+        }
+        return {};
+    };
+
+    const QString envPrefix = qEnvironmentVariable("FLUIDSYNTH_PREFIX");
+    if (!envPrefix.isEmpty()) {
+        const QString direct = findInDir(envPrefix);
+        if (!direct.isEmpty()) return direct;
+
+        const QString binPath = QDir(envPrefix).absoluteFilePath(QStringLiteral("bin"));
+        const QString fromBin = findInDir(binPath);
+        if (!fromBin.isEmpty()) return fromBin;
+    }
+
+    const QStringList candidateDirs = {
+        QCoreApplication::applicationDirPath(),
+        QDir::currentPath()
+    };
+
+    for (const QString &dir : candidateDirs) {
+        const QString path = findInDir(dir);
+        if (!path.isEmpty()) return path;
     }
 
     const QStringList libraryNames = {

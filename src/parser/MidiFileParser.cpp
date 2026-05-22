@@ -15,10 +15,13 @@ struct RawMidiEvent {
     int velocity = 0;
     int track = 0;
     int channel = 0;
+    int controller = 0;
+    int value = 0;
 };
 
 struct ActiveNote {
     qint64 tick = 0;
+    int note = 0;
     int velocity = 80;
     int track = 0;
     int channel = 0;
@@ -66,6 +69,23 @@ QByteArray readSizedText(const QByteArray &trackData, int offset, int length)
     return trackData.mid(offset, length);
 }
 
+QString noteKey(int track, int channel, int note)
+{
+    return QStringLiteral("%1:%2:%3").arg(track).arg(channel).arg(note);
+}
+
+QString laneKey(int track, int channel)
+{
+    return QStringLiteral("%1:%2").arg(track).arg(channel);
+}
+
+int eventOrder(const RawMidiEvent &event)
+{
+    if (event.type == 0xB0) return 0;
+    if (event.type == 0x80 || (event.type == 0x90 && event.velocity == 0)) return 1;
+    return 2;
+}
+
 }
 
 ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
@@ -97,6 +117,8 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
     result.ppq = division > 0 ? division : 480;
 
     QVector<RawMidiEvent> rawEvents;
+    QHash<int, qint64> trackEndTicks;
+    qint64 lastTick = 0;
     bool tempoSeen = false;
 
     for (int trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
@@ -111,6 +133,7 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
             qint64 delta = 0;
             if (!readVarLen(payload, pos, delta)) break;
             tick += delta;
+            lastTick = qMax(lastTick, tick);
 
             if (pos >= payload.size()) break;
             int status = quint8(payload.at(pos++));
@@ -128,14 +151,17 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
                 if (!readVarLen(payload, pos, length)) break;
                 if (length < 0 || pos + length > payload.size()) break;
 
-                if (metaType == 0x51 && length == 3 && !tempoSeen) {
+                if (metaType == 0x51 && length == 3) {
                     const int microsPerQuarter =
                         (quint8(payload.at(pos)) << 16) |
                         (quint8(payload.at(pos + 1)) << 8) |
                         quint8(payload.at(pos + 2));
                     if (microsPerQuarter > 0) {
-                        result.bpm = qRound(60000000.0 / microsPerQuarter);
-                        tempoSeen = true;
+                        result.tempos.push_back({ tick, microsPerQuarter });
+                        if (!tempoSeen) {
+                            result.bpm = qRound(60000000.0 / microsPerQuarter);
+                            tempoSeen = true;
+                        }
                     }
                 } else if ((metaType == 0x03 || metaType == 0x04) && result.title.isEmpty()) {
                     result.title = QString::fromUtf8(readSizedText(payload, pos, int(length))).trimmed();
@@ -160,43 +186,100 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
             if (high == 0x90 || high == 0x80) {
                 const int note = quint8(payload.at(pos++));
                 const int velocity = quint8(payload.at(pos++));
-                rawEvents.push_back({ tick, high, note, velocity, trackIndex, channel });
+                rawEvents.push_back({ tick, high, note, velocity, trackIndex, channel, 0, 0 });
+            } else if (high == 0xB0) {
+                const int controller = quint8(payload.at(pos++));
+                const int value = quint8(payload.at(pos++));
+                if (controller == 64) {
+                    rawEvents.push_back({ tick, high, 0, 0, trackIndex, channel, controller, value });
+                }
             } else {
                 pos += needed;
             }
         }
+
+        trackEndTicks.insert(trackIndex, tick);
     }
 
     std::sort(rawEvents.begin(), rawEvents.end(), [](const RawMidiEvent &a, const RawMidiEvent &b) {
         if (a.tick != b.tick) return a.tick < b.tick;
-        return a.type < b.type;
+        return eventOrder(a) < eventOrder(b);
     });
 
     QHash<QString, QVector<ActiveNote>> active;
+    QHash<QString, bool> sustainDown;
+    QHash<QString, QVector<RawMidiEvent>> delayedNoteOffs;
     int idCounter = 1;
 
-    for (const auto &event : rawEvents) {
-        const QString key = QStringLiteral("%1:%2").arg(event.channel).arg(event.note);
-        if (event.type == 0x90 && event.velocity > 0) {
-            active[key].push_back({ event.tick, event.velocity, event.track, event.channel });
-            continue;
-        }
-
-        auto &stack = active[key];
-        if (stack.isEmpty()) continue;
-
-        const ActiveNote start = stack.takeFirst();
+    auto appendNote = [&](const ActiveNote &start, qint64 endTick) {
+        const qint64 minDuration = qMax<qint64>(1, result.ppq / 16);
         NoteEvent note;
         note.id = idCounter++;
-        note.midi = event.note;
+        note.midi = start.note;
         note.velocity = start.velocity;
         note.startTick = start.tick;
-        note.durationTick = qMax<qint64>(result.ppq / 4, event.tick - start.tick);
+        note.durationTick = qMax(minDuration, endTick - start.tick);
         note.track = start.track;
         note.channel = start.channel;
         note.fingering = 0;
-        note.noteName = NoteUtils::midiToName(event.note);
+        note.noteName = NoteUtils::midiToName(start.note);
         result.notes.push_back(note);
+    };
+
+    auto finishNote = [&](const RawMidiEvent &event, qint64 endTick) {
+        const QString key = noteKey(event.track, event.channel, event.note);
+        auto &stack = active[key];
+        if (stack.isEmpty()) return;
+        appendNote(stack.takeFirst(), endTick);
+    };
+
+    auto releaseDelayedNotes = [&](const QString &lane, qint64 endTick) {
+        const QVector<RawMidiEvent> delayed = delayedNoteOffs.take(lane);
+        for (const auto &noteOff : delayed) {
+            finishNote(noteOff, endTick);
+        }
+    };
+
+    for (const auto &event : rawEvents) {
+        if (event.type == 0xB0 && event.controller == 64) {
+            const QString lane = laneKey(event.track, event.channel);
+            const bool wasDown = sustainDown.value(lane, false);
+            const bool isDown = event.value >= 64;
+            sustainDown.insert(lane, isDown);
+            if (wasDown && !isDown) {
+                releaseDelayedNotes(lane, event.tick);
+            }
+            continue;
+        }
+
+        const QString key = noteKey(event.track, event.channel, event.note);
+        if (event.type == 0x90 && event.velocity > 0) {
+            active[key].push_back({ event.tick, event.note, event.velocity, event.track, event.channel });
+            continue;
+        }
+
+        const QString lane = laneKey(event.track, event.channel);
+        if (sustainDown.value(lane, false)) {
+            delayedNoteOffs[lane].push_back(event);
+            continue;
+        }
+
+        finishNote(event, event.tick);
+    }
+
+    for (auto it = delayedNoteOffs.cbegin(); it != delayedNoteOffs.cend(); ++it) {
+        for (const auto &noteOff : it.value()) {
+            const qint64 endTick = qMax(noteOff.tick, trackEndTicks.value(noteOff.track, lastTick));
+            finishNote(noteOff, endTick);
+        }
+    }
+
+    for (auto it = active.cbegin(); it != active.cend(); ++it) {
+        for (const auto &start : it.value()) {
+            const qint64 endTick = qMax(trackEndTicks.value(start.track, lastTick),
+                                       start.tick + qint64(result.ppq));
+            appendNote(start, endTick);
+        }
     }
 
     std::sort(result.notes.begin(), result.notes.end(), [](const NoteEvent &a, const NoteEvent &b) {
