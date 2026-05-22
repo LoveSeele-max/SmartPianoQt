@@ -28,8 +28,9 @@ MidiSynth::~MidiSynth()
 void MidiSynth::noteOn(int midi, int velocity)
 {
     if (!m_available || midi < 0 || midi > 127) return;
+    if (m_volume <= 0) return;
 
-    const int scaledVelocity = qBound(1, velocity * m_volume / 127, 127);
+    const int scaledVelocity = qBound(1, qRound(double(velocity) * double(m_volume) / 96.0), 127);
     if (m_soundingNotes.contains(midi)) {
         sendShortMessage(0x80, static_cast<unsigned char>(midi), 0);
     }

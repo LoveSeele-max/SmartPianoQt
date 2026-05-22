@@ -107,6 +107,7 @@ private:
     void setPlaying(bool playing);
     void setStatusMessage(const QString &message);
     void clampPosition();
+    void retriggerAutoNoteStarts(qint64 previousTick, qint64 currentTick);
     qint64 beatToTick(double beat) const;
     double tickToBeat(qint64 tick) const;
     qint64 msToTicks(qint64 elapsedMs) const;

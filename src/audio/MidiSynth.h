@@ -27,7 +27,7 @@ private:
     void setProgram(int program);
 
     bool m_available = false;
-    int m_volume = 110;
+    int m_volume = 127;
     QString m_statusText;
     QSet<int> m_soundingNotes;
 

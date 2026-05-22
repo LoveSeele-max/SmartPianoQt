@@ -209,7 +209,7 @@ void PianoController::loadDemoSong()
         NoteEvent note;
         note.id = id++;
         note.midi = midi;
-        note.velocity = 86;
+        note.velocity = 112;
         note.startTick = beatToTick(startBeat);
         note.durationTick = beatToTick(durationBeat);
         note.fingering = finger;
@@ -316,15 +316,18 @@ void PianoController::onFrame()
 {
     if (!m_playing) return;
     const qint64 elapsedMs = m_frameClock.restart();
+    const qint64 previousTick = m_currentTick;
 
     if (m_mode == QStringLiteral("auto")) {
         m_currentTick += msToTicks(elapsedMs);
         if (m_currentTick >= m_totalTicks) {
             m_currentTick = m_totalTicks;
+            retriggerAutoNoteStarts(previousTick, m_currentTick);
             setPlaying(false);
             setStatusMessage(QStringLiteral("播放完成"));
             emit positionChanged();
         } else {
+            retriggerAutoNoteStarts(previousTick, m_currentTick);
             m_positionNotifyAccumulatorMs += elapsedMs;
             if (m_positionNotifyAccumulatorMs >= 80) {
                 m_positionNotifyAccumulatorMs = 0;
@@ -664,6 +667,24 @@ void PianoController::clampPosition()
     m_currentTick = qBound<qint64>(0, m_currentTick, m_totalTicks);
 }
 
+void PianoController::retriggerAutoNoteStarts(qint64 previousTick, qint64 currentTick)
+{
+    if (currentTick <= previousTick || m_autoNotes.isEmpty()) return;
+
+    const auto first = std::upper_bound(m_notes.begin(), m_notes.end(), previousTick,
+        [](qint64 tick, const NoteEvent &note) {
+            return tick < note.startTick;
+        });
+
+    for (auto it = first; it != m_notes.end(); ++it) {
+        const NoteEvent &note = *it;
+        if (note.startTick > currentTick) break;
+        if (m_autoNotes.contains(note.midi)) {
+            m_synth.noteOn(note.midi, qBound(1, note.velocity, 127));
+        }
+    }
+}
+
 qint64 PianoController::beatToTick(double beat) const
 {
     return qRound64(beat * m_ppq);
@@ -699,5 +720,5 @@ int PianoController::velocityForMidi(int midi) const
             }
         }
     }
-    return 96;
+    return 112;
 }
