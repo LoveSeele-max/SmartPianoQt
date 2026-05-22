@@ -1,16 +1,12 @@
 #include "core/PianoController.h"
 
 #include "core/NoteUtils.h"
+#include "library/MidiLibraryService.h"
+#include "parser/JsonSheetParser.h"
 #include "parser/MidiFileParser.h"
 
 #include <QFile>
 #include <QFileInfo>
-#include <QCoreApplication>
-#include <QDesktopServices>
-#include <QDir>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QSet>
 #include <QtMath>
 #include <QUrl>
@@ -32,7 +28,7 @@ PianoController::PianoController(QObject *parent)
     m_timer.setInterval(16);
     m_timer.setTimerType(Qt::PreciseTimer);
     connect(&m_timer, &QTimer::timeout, this, &PianoController::onFrame);
-    m_localMidiLibraryPath = resolveLocalMidiLibraryPath();
+    m_localMidiLibraryPath = MidiLibraryService::resolveLibraryPath();
     refreshLocalMidiLibrary();
     loadDemoSong();
 }
@@ -278,30 +274,9 @@ void PianoController::loadSheet(const QUrl &url)
 
 void PianoController::refreshLocalMidiLibrary()
 {
-    QDir dir(m_localMidiLibraryPath);
-    if (!dir.exists()) {
-        dir.mkpath(QStringLiteral("."));
-    }
-
-    const QFileInfoList files = dir.entryInfoList(
-        { QStringLiteral("*.mid"), QStringLiteral("*.midi") },
-        QDir::Files | QDir::Readable,
-        QDir::Name | QDir::IgnoreCase);
-
-    QVariantList entries;
-    entries.reserve(files.size());
-    for (const QFileInfo &file : files) {
-        QVariantMap item;
-        item.insert(QStringLiteral("name"), file.completeBaseName());
-        item.insert(QStringLiteral("fileName"), file.fileName());
-        item.insert(QStringLiteral("path"), file.absoluteFilePath());
-        item.insert(QStringLiteral("sizeKb"), qMax<qint64>(1, file.size() / 1024));
-        entries.push_back(item);
-    }
-
-    m_localMidiFiles = entries;
+    m_localMidiFiles = MidiLibraryService::scanLibrary(m_localMidiLibraryPath);
     emit localMidiLibraryChanged();
-    setStatusMessage(QStringLiteral("本地 MIDI 库已刷新：%1 首").arg(entries.size()));
+    setStatusMessage(QStringLiteral("本地 MIDI 库已刷新：%1 首").arg(m_localMidiFiles.size()));
 }
 
 void PianoController::loadLocalMidi(int index)
@@ -317,11 +292,7 @@ void PianoController::loadLocalMidi(int index)
 
 void PianoController::openLocalMidiLibrary()
 {
-    QDir dir(m_localMidiLibraryPath);
-    if (!dir.exists()) {
-        dir.mkpath(QStringLiteral("."));
-    }
-    QDesktopServices::openUrl(QUrl::fromLocalFile(dir.absolutePath()));
+    MidiLibraryService::openLibrary(m_localMidiLibraryPath);
 }
 
 void PianoController::onFrame()
@@ -409,72 +380,14 @@ void PianoController::setSong(const QString &title, int bpm, int ppq, QVector<No
 
 void PianoController::loadJsonSheet(const QString &path)
 {
-    constexpr int jsonPpq = DefaultPpq;
-
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        setStatusMessage(QStringLiteral("无法读取 JSON 文件"));
+    const ParsedJsonSheet parsed = JsonSheetParser::parseFile(path);
+    if (!parsed.ok) {
+        setStatusMessage(parsed.error);
         return;
     }
 
-    QJsonParseError parseError;
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-        setStatusMessage(QStringLiteral("JSON 曲谱格式无效"));
-        return;
-    }
-
-    const QJsonObject root = doc.object();
-    const QJsonArray data = root.value(QStringLiteral("data")).toArray();
-    if (data.isEmpty()) {
-        setStatusMessage(QStringLiteral("JSON 曲谱没有 data 音符数组"));
-        return;
-    }
-
-    const int bpm = root.value(QStringLiteral("bpm")).toInt(100);
-    const QString title = root.value(QStringLiteral("name")).toString(QFileInfo(path).completeBaseName());
-    QVector<NoteEvent> parsed;
-    parsed.reserve(data.size());
-
-    double cursorBeat = 0.0;
-    int id = 1;
-    for (const auto &value : data) {
-        const QJsonObject item = value.toObject();
-        int midi = item.value(QStringLiteral("midi")).toInt(-1);
-        if (midi < 0) {
-            midi = NoteUtils::noteNameToMidi(item.value(QStringLiteral("note")).toString());
-        }
-        if (midi < 0) continue;
-
-        const double startBeat = item.contains(QStringLiteral("startTimeBeat"))
-                                     ? item.value(QStringLiteral("startTimeBeat")).toDouble()
-                                     : cursorBeat;
-        const double durationBeat = item.contains(QStringLiteral("durationBeat"))
-                                        ? item.value(QStringLiteral("durationBeat")).toDouble(1.0)
-                                        : item.value(QStringLiteral("duration")).toDouble(1.0);
-
-        NoteEvent note;
-        note.id = id++;
-        note.midi = midi;
-        note.velocity = item.value(QStringLiteral("velocity")).toInt(84);
-        note.startTick = beatsToTicks(startBeat, jsonPpq);
-        note.durationTick = qMax<qint64>(jsonPpq / 8, beatsToTicks(durationBeat, jsonPpq));
-        note.fingering = item.value(QStringLiteral("fingering")).toInt(0);
-        note.noteName = NoteUtils::midiToName(midi);
-        parsed.push_back(note);
-
-        if (!item.contains(QStringLiteral("startTimeBeat"))) {
-            cursorBeat += durationBeat;
-        }
-    }
-
-    if (parsed.isEmpty()) {
-        setStatusMessage(QStringLiteral("JSON 曲谱中没有可用音符"));
-        return;
-    }
-
-    setSong(title, bpm, jsonPpq, parsed);
-    setStatusMessage(QStringLiteral("已导入 JSON：%1").arg(title));
+    setSong(parsed.title, parsed.bpm, parsed.ppq, parsed.notes);
+    setStatusMessage(QStringLiteral("已导入 JSON：%1").arg(parsed.title));
 }
 
 void PianoController::loadMidiFile(const QString &path)
@@ -495,29 +408,6 @@ void PianoController::loadMidiFile(const QString &path)
     const QString title = parsed.title.isEmpty() ? info.completeBaseName() : parsed.title;
     setSong(title, parsed.bpm, parsed.ppq, parsed.notes);
     setStatusMessage(QStringLiteral("已加载 MIDI：%1").arg(title));
-}
-
-QString PianoController::resolveLocalMidiLibraryPath() const
-{
-    auto findFrom = [](QDir dir) -> QString {
-        for (int i = 0; i < 6; ++i) {
-            const QString candidate = dir.absoluteFilePath(QStringLiteral("midi_library"));
-            if (QDir(candidate).exists()) return QDir(candidate).absolutePath();
-            if (!dir.cdUp()) break;
-        }
-        return {};
-    };
-
-    QString path = findFrom(QDir::current());
-    if (!path.isEmpty()) return path;
-
-    path = findFrom(QDir(QCoreApplication::applicationDirPath()));
-    if (!path.isEmpty()) return path;
-
-    QDir dir(QDir::current());
-    const QString created = dir.absoluteFilePath(QStringLiteral("midi_library"));
-    dir.mkpath(QStringLiteral("midi_library"));
-    return QDir(created).absolutePath();
 }
 
 void PianoController::rebuildPracticeTicks()

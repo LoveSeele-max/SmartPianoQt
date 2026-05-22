@@ -19,6 +19,10 @@ qt_add_executable(SmartPianoQt
     src/core/NoteUtils.h
     src/core/PianoController.cpp
     src/core/PianoController.h
+    src/library/MidiLibraryService.cpp
+    src/library/MidiLibraryService.h
+    src/parser/JsonSheetParser.cpp
+    src/parser/JsonSheetParser.h
     src/ui/PianoRollItem.cpp
     src/ui/PianoRollItem.h
     src/parser/MidiFileParser.cpp
@@ -42,6 +46,39 @@ target_link_libraries(SmartPianoQt PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
 )
+
+include(CTest)
+
+if(BUILD_TESTING)
+    add_executable(SmartPianoQtTests
+        tests/test_parsers.cpp
+        src/core/NoteUtils.cpp
+        src/core/NoteUtils.h
+        src/parser/JsonSheetParser.cpp
+        src/parser/JsonSheetParser.h
+        src/parser/MidiFileParser.cpp
+        src/parser/MidiFileParser.h
+    )
+
+    target_include_directories(SmartPianoQtTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+
+    target_link_libraries(SmartPianoQtTests PRIVATE
+        Qt6::Core
+    )
+
+    if(WIN32)
+        add_test(
+            NAME SmartPianoQtParserTests
+            COMMAND ${CMAKE_COMMAND} -E env
+                "PATH=$<TARGET_FILE_DIR:Qt6::Core>$<SEMICOLON>$ENV{PATH}"
+                $<TARGET_FILE:SmartPianoQtTests>
+        )
+    else()
+        add_test(NAME SmartPianoQtParserTests COMMAND SmartPianoQtTests)
+    endif()
+endif()
 
 include(GNUInstallDirs)
 

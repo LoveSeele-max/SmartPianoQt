@@ -97,7 +97,6 @@ private:
     void setSong(const QString &title, int bpm, int ppq, QVector<NoteEvent> notes);
     void loadJsonSheet(const QString &path);
     void loadMidiFile(const QString &path);
-    QString resolveLocalMidiLibraryPath() const;
     void rebuildPracticeTicks();
     void preparePracticeAtCurrentPosition();
     void evaluatePracticeNote(int midi);
