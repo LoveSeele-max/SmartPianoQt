@@ -7,6 +7,7 @@ SmartPianoQt 是 Smart Piano 的 Qt 6 桌面版初版。当前目标不是一次
 - Qt Quick/QML 界面，包含控制面板、卷帘窗和 61 键虚拟键盘。
 - C++ 播放状态机，支持播放、暂停、停止、拖动进度、BPM 调整和音量调节。
 - 通过 Qt Multimedia 内置柔和钢琴合成器播放，比系统 General MIDI 更稳定。
+- 如果 `soundfonts/` 中存在 `.sf2/.sf3` 且本机可加载 FluidSynth DLL，会优先使用真实采样钢琴音色。
 - 练习模式会停在当前音符或和弦，弹对后继续。
 - 支持导入 JSON 和标准 MIDI 文件。
 - 支持本地 MIDI 曲谱库：把 `.mid/.midi` 文件放进 `midi_library/` 后刷新即可加载。
@@ -79,10 +80,25 @@ $env:QT_PREFIX = "D:\Qt\6.11.1\mingw_64"
 
 为了避免误提交曲谱文件，`midi_library/*.mid` 和 `midi_library/*.midi` 已加入 `.gitignore`。
 
+## 钢琴音色
+
+最接近传统钢琴的方式是使用真实采样 SoundFont：
+
+1. 安装 FluidSynth，或把 `libfluidsynth-3.dll` 放到 `SmartPianoQt.exe` 旁边。
+2. 把钢琴 `.sf2` 或 `.sf3` 文件放到 [soundfonts](soundfonts) 文件夹。
+3. 重新启动应用，顶部状态会显示 `钢琴音色：SoundFont 采样 - 文件名`。
+
+如果没有检测到 FluidSynth 或 SoundFont，应用会自动退回内置柔和钢琴合成器。
+
+参考入口：
+
+- FluidSynth 下载：https://www.fluidsynth.org/download/
+- MuseScore SoundFont 说明：https://musescore.org/en/handbook/4/soundfonts
+
 ## 下一步
 
 - 接入 RtMidi，迁移 Yamaha PSR-E383 的 `0xFE/0xF8` 过滤。
-- 接入 FluidSynth + SF2 音源，进一步替换当前内置合成钢琴音色。
+- 打包 FluidSynth 运行库和推荐的开源钢琴 SoundFont。
 - 增加 SQLite 曲谱库和练习记录。
 - 增加 MusicXML / MXL 解析。
 - 为 MIDI 解析、练习判断补单元测试。

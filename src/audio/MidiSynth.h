@@ -3,6 +3,7 @@
 #include <QAudioFormat>
 #include <QAudioSink>
 #include <QIODevice>
+#include <QLibrary>
 #include <QMutex>
 #include <QObject>
 #include <QString>
@@ -46,6 +47,8 @@ private:
     double m_reverbR = 0.0;
 };
 
+class FluidSynthAudioDevice;
+
 class MidiSynth : public QObject {
     Q_OBJECT
 
@@ -63,13 +66,27 @@ public:
     void setVolume(int volume);
 
 private:
+    enum class Backend {
+        None,
+        FluidSynth,
+        InternalPiano
+    };
+
     void open();
     void close();
+    bool openFluidSynth();
+    bool openInternalPiano();
+    QString resolveSoundFontPath() const;
+    QString resolveFluidSynthLibraryPath() const;
 
     bool m_available = false;
     int m_volume = 118;
     QString m_statusText;
+    QString m_soundFontPath;
+    Backend m_backend = Backend::None;
     QAudioFormat m_format;
     std::unique_ptr<QAudioSink> m_audioSink;
-    std::unique_ptr<PianoAudioDevice> m_audioDevice;
+    std::unique_ptr<PianoAudioDevice> m_internalDevice;
+    std::unique_ptr<FluidSynthAudioDevice> m_fluidDevice;
+    QLibrary m_fluidLibrary;
 };

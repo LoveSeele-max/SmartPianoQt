@@ -7,3 +7,5 @@ out/
 *.jsc
 midi_library/*.mid
 midi_library/*.midi
+soundfonts/*.sf2
+soundfonts/*.sf3
