@@ -22,7 +22,11 @@ signals:
 
 private:
     double tickToBeat(qint64 tick) const;
-    qreal noteY(int midi, qreal trackTop, qreal trackHeight) const;
+    bool isBlackMidi(int midi) const;
+    int whiteIndexBefore(int midi) const;
+    qreal keyX(int midi, qreal whiteKeyWidth) const;
+    QRectF noteRect(int midi, double startBeat, double durationBeat, double currentBeat,
+                   qreal whiteKeyWidth, qreal fallTop, qreal strikeY, qreal pixelsPerBeat) const;
     void connectController(PianoController *controller);
     void disconnectController(PianoController *controller);
 

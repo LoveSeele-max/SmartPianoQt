@@ -13,6 +13,7 @@ namespace {
 
 constexpr int MinMidi = 36;
 constexpr int MaxMidi = 96;
+constexpr int WhiteKeyCount = 36;
 
 QColor withAlpha(const QColor &color, qreal alpha)
 {
@@ -63,58 +64,71 @@ void PianoRollItem::paint(QPainter *p)
 
     if (!m_controller) return;
 
-    const qreal gutter = 58;
-    const qreal ruler = 34;
-    const qreal bottomPad = 24;
-    const qreal trackTop = ruler + 12;
-    const qreal trackBottom = h - bottomPad;
-    const qreal trackHeight = qMax<qreal>(120, trackBottom - trackTop);
-    const qreal playheadX = gutter + (w - gutter) * 0.42;
-    const qreal pixelsPerBeat = qBound<qreal>(58, (w - gutter) / 11.0, 120);
+    const qreal topPad = 32;
+    const qreal bottomPad = 20;
+    const qreal fallTop = topPad;
+    const qreal strikeY = h - bottomPad;
+    const qreal whiteKeyWidth = w / WhiteKeyCount;
+    const qreal pixelsPerBeat = qBound<qreal>(58, (strikeY - fallTop) / 6.0, 130);
     const double currentBeat = tickToBeat(m_controller->currentTickValue());
-    const qint64 visibleStartTick = qMax<qint64>(0, qRound64((currentBeat - 6.0) * m_controller->ppq()));
-    const qint64 visibleEndTick = qRound64((currentBeat + 9.0) * m_controller->ppq());
+    const qint64 visibleStartTick = qMax<qint64>(0, qRound64((currentBeat - 1.0) * m_controller->ppq()));
+    const qint64 visibleEndTick = qRound64((currentBeat + 7.0) * m_controller->ppq());
     const qint64 expectedTick = m_controller->expectedTickValue();
     const bool practiceMode = m_controller->mode() == QStringLiteral("practice");
 
-    p->fillRect(QRectF(0, 0, gutter, h), QColor(24, 24, 27, 235));
-    p->fillRect(QRectF(gutter, 0, w - gutter, ruler), QColor(9, 9, 11, 200));
+    p->fillRect(QRectF(0, 0, w, topPad), QColor(9, 9, 11, 210));
+    p->fillRect(QRectF(0, strikeY - 2, w, h - strikeY + 2), QColor(9, 9, 11, 225));
 
-    QPen gridPen;
     for (int midi = MinMidi; midi <= MaxMidi; ++midi) {
-        const qreal y = noteY(midi, trackTop, trackHeight);
-        const bool octave = midi % 12 == 0;
-        gridPen.setColor(octave ? QColor(20, 184, 166, 56) : QColor(255, 255, 255, 12));
-        gridPen.setWidthF(octave ? 1.0 : 0.5);
-        p->setPen(gridPen);
-        p->drawLine(QPointF(gutter, y), QPointF(w, y));
-
-        if (octave) {
-            p->setPen(QColor(228, 228, 231, 184));
-            QFont font(QStringLiteral("Segoe UI"), 8);
-            p->setFont(font);
-            p->drawText(QRectF(2, y - 8, gutter - 11, 16), Qt::AlignRight | Qt::AlignVCenter,
-                        NoteUtils::midiToName(midi));
-        }
+        if (isBlackMidi(midi)) continue;
+        const qreal x = keyX(midi, whiteKeyWidth);
+        const QRectF lane(x, topPad, whiteKeyWidth, strikeY - topPad);
+        p->fillRect(lane, whiteIndexBefore(midi) % 2 == 0 ? QColor(255, 255, 255, 10)
+                                                          : QColor(255, 255, 255, 6));
+        p->setPen(QPen(QColor(255, 255, 255, 18), 0.6));
+        p->drawLine(QPointF(x, topPad), QPointF(x, strikeY));
     }
 
-    const int startBeat = qMax(0, int(std::floor(currentBeat - 5)));
-    const int endBeat = int(std::ceil(qMin(tickToBeat(m_controller->totalTickValue()) + 1.0, currentBeat + 8.0)));
+    for (int midi = MinMidi; midi <= MaxMidi; ++midi) {
+        if (!isBlackMidi(midi)) continue;
+        const qreal x = keyX(midi, whiteKeyWidth);
+        p->fillRect(QRectF(x, topPad, whiteKeyWidth * 0.64, strikeY - topPad),
+                    QColor(0, 0, 0, 34));
+    }
+
+    const int startBeat = qMax(0, int(std::floor(currentBeat - 1)));
+    const int endBeat = int(std::ceil(qMin(tickToBeat(m_controller->totalTickValue()) + 1.0, currentBeat + 7.0)));
     for (int beat = startBeat; beat <= endBeat; ++beat) {
-        const qreal x = (beat - currentBeat) * pixelsPerBeat + playheadX;
+        const qreal y = strikeY - (beat - currentBeat) * pixelsPerBeat;
+        if (y < topPad || y > strikeY) continue;
         const bool measure = beat % 4 == 0;
         QPen pen(measure ? QColor(20, 184, 166, 90) : QColor(255, 255, 255, 20));
         pen.setWidthF(measure ? 1.2 : 0.5);
         p->setPen(pen);
-        p->drawLine(QPointF(x, ruler), QPointF(x, h));
+        p->drawLine(QPointF(0, y), QPointF(w, y));
 
         p->setPen(measure ? QColor(153, 246, 228, 240) : QColor(161, 161, 170, 148));
         QFont font(QStringLiteral("Segoe UI"), measure ? 8 : 7);
         font.setBold(measure);
         p->setFont(font);
-        p->drawText(QRectF(x - 28, 0, 56, ruler), Qt::AlignCenter,
+        p->drawText(QRectF(8, y - 11, 58, 22), Qt::AlignLeft | Qt::AlignVCenter,
                     measure ? QStringLiteral("M%1").arg(beat / 4 + 1) : QString::number(beat + 1));
     }
+
+    QLinearGradient strikeGlow(0, strikeY - 28, 0, strikeY + 8);
+    strikeGlow.setColorAt(0.0, QColor(20, 184, 166, 0));
+    strikeGlow.setColorAt(0.62, QColor(20, 184, 166, 58));
+    strikeGlow.setColorAt(1.0, QColor(20, 184, 166, 0));
+    p->fillRect(QRectF(0, strikeY - 28, w, 36), strikeGlow);
+    p->setPen(QPen(QColor("#f8fafc"), 2.0));
+    p->drawLine(QPointF(0, strikeY), QPointF(w, strikeY));
+
+    p->setPen(QColor(228, 228, 231, 185));
+    QFont titleFont(QStringLiteral("Segoe UI"), 9);
+    titleFont.setBold(true);
+    p->setFont(titleFont);
+    p->drawText(QRectF(12, 0, w - 24, topPad), Qt::AlignVCenter | Qt::AlignLeft,
+                QStringLiteral("瀑布视图：音符落到键盘上沿时弹奏"));
 
     const auto &notes = m_controller->noteEvents();
     const qint64 searchStartTick = qMax<qint64>(0, visibleStartTick - qint64(m_controller->ppq()) * 8);
@@ -132,11 +146,10 @@ void PianoRollItem::paint(QPainter *p)
 
         const double startBeat = tickToBeat(note.startTick);
         const double durationBeat = tickToBeat(note.durationTick);
-        const qreal x = (startBeat - currentBeat) * pixelsPerBeat + playheadX;
-        const qreal noteW = qMax<qreal>(durationBeat * pixelsPerBeat - 10, 20);
-        if (x < gutter - noteW - 70 || x > w + 70) continue;
+        const QRectF rect = noteRect(note.midi, startBeat, durationBeat, currentBeat,
+                                     whiteKeyWidth, fallTop, strikeY, pixelsPerBeat);
+        if (rect.bottom() < topPad || rect.top() > strikeY + 30) continue;
 
-        const qreal y = noteY(note.midi, trackTop, trackHeight);
         const bool active = m_controller->currentTickValue() >= note.startTick &&
                             m_controller->currentTickValue() <= note.startTick + note.durationTick;
         const bool expected = practiceMode && expectedTick == note.startTick;
@@ -148,24 +161,19 @@ void PianoRollItem::paint(QPainter *p)
                           : active ? QColor("#ccfbf1")
                           : QColor("#bae6fd");
 
-        const QRectF rect(x, y - 9, noteW, 18);
         p->setPen(Qt::NoPen);
         p->setBrush(withAlpha(fill, expected || active ? 0.96 : 0.86));
-        p->drawRoundedRect(rect, 5, 5);
+        p->drawRoundedRect(rect, 6, 6);
         p->setBrush(Qt::NoBrush);
-        p->setPen(QPen(edge, 1.0));
-        p->drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 5, 5);
+        p->setPen(QPen(edge, expected ? 1.5 : 1.0));
+        p->drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
 
-        if (noteW > 34) {
+        if (rect.height() > 18 && rect.width() > 22) {
             p->setPen(QColor("#020617"));
             p->setFont(noteFont);
             p->drawText(rect, Qt::AlignCenter, note.noteName);
         }
     }
-
-    QPen playhead(QColor("#f8fafc"), 2.0);
-    p->setPen(playhead);
-    p->drawLine(QPointF(playheadX, ruler), QPointF(playheadX, h));
 }
 
 double PianoRollItem::tickToBeat(qint64 tick) const
@@ -174,10 +182,39 @@ double PianoRollItem::tickToBeat(qint64 tick) const
     return double(tick) / double(m_controller->ppq());
 }
 
-qreal PianoRollItem::noteY(int midi, qreal trackTop, qreal trackHeight) const
+bool PianoRollItem::isBlackMidi(int midi) const
 {
-    const qreal span = MaxMidi - MinMidi;
-    return trackTop + (1.0 - (midi - MinMidi) / span) * trackHeight;
+    const int pc = ((midi % 12) + 12) % 12;
+    return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
+}
+
+int PianoRollItem::whiteIndexBefore(int midi) const
+{
+    int count = 0;
+    for (int n = MinMidi; n < midi; ++n) {
+        if (!isBlackMidi(n)) ++count;
+    }
+    return count;
+}
+
+qreal PianoRollItem::keyX(int midi, qreal whiteKeyWidth) const
+{
+    if (!isBlackMidi(midi)) {
+        return whiteIndexBefore(midi) * whiteKeyWidth;
+    }
+    return whiteIndexBefore(midi) * whiteKeyWidth - whiteKeyWidth * 0.32;
+}
+
+QRectF PianoRollItem::noteRect(int midi, double startBeat, double durationBeat, double currentBeat,
+                               qreal whiteKeyWidth, qreal fallTop, qreal strikeY, qreal pixelsPerBeat) const
+{
+    const bool black = isBlackMidi(midi);
+    const qreal width = black ? whiteKeyWidth * 0.64 : whiteKeyWidth * 0.88;
+    const qreal x = keyX(midi, whiteKeyWidth) + (black ? 0.0 : whiteKeyWidth * 0.06);
+    const qreal endY = strikeY - (startBeat - currentBeat) * pixelsPerBeat;
+    const qreal height = qMax<qreal>(durationBeat * pixelsPerBeat, 18.0);
+    const qreal top = qMax<qreal>(fallTop - 42, endY - height);
+    return QRectF(x, top, width, height);
 }
 
 void PianoRollItem::connectController(PianoController *controller)

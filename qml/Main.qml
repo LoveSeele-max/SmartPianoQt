@@ -429,7 +429,7 @@ ApplicationWindow {
                 Rectangle {
                     id: keyboard
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 190
+                    Layout.preferredHeight: 168
                     color: "#111113"
                     radius: 8
                     border.color: "#2f3036"
