@@ -105,7 +105,7 @@ ApplicationWindow {
                 }
 
                 Label {
-                    text: piano.statusMessage
+                    text: piano.statusMessage + "  |  " + piano.audioStatus
                     color: "#a1a1aa"
                     font.pixelSize: 13
                     elide: Text.ElideRight

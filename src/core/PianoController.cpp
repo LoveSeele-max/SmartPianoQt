@@ -139,6 +139,8 @@ void PianoController::playPause()
 void PianoController::stop()
 {
     setPlaying(false);
+    m_pressedNotes.clear();
+    m_synth.stopAll();
     m_currentTick = 0;
     resetPracticeState(true);
     refreshActiveNotes();
@@ -305,6 +307,10 @@ QVariantMap PianoController::noteToVariant(const NoteEvent &note) const
 
 void PianoController::setSong(const QString &title, int bpm, int ppq, QVector<NoteEvent> notes)
 {
+    setPlaying(false);
+    m_pressedNotes.clear();
+    m_synth.stopAll();
+
     std::sort(notes.begin(), notes.end(), [](const NoteEvent &a, const NoteEvent &b) {
         if (a.startTick != b.startTick) return a.startTick < b.startTick;
         return a.midi < b.midi;
@@ -523,6 +529,19 @@ void PianoController::refreshActiveNotes()
     for (int midi : m_autoNotes) combined.insert(midi);
 
     if (combined == m_activeNotes) return;
+    const QSet<int> previous = m_activeNotes;
+
+    for (int midi : previous) {
+        if (!combined.contains(midi)) {
+            m_synth.noteOff(midi);
+        }
+    }
+    for (int midi : combined) {
+        if (!previous.contains(midi)) {
+            m_synth.noteOn(midi, velocityForMidi(midi));
+        }
+    }
+
     m_activeNotes = combined;
     emit activeNotesChanged();
 }
@@ -568,4 +587,26 @@ qint64 PianoController::msToTicks(qint64 elapsedMs) const
 {
     const double beats = (double(elapsedMs) / 1000.0) * (double(m_bpm) / 60.0);
     return qMax<qint64>(1, qRound64(beats * m_ppq));
+}
+
+int PianoController::velocityForMidi(int midi) const
+{
+    if (m_autoNotes.contains(midi)) {
+        const qint64 searchStartTick = qMax<qint64>(0, m_currentTick - m_maxNoteDurationTick - 1);
+        const auto first = std::lower_bound(m_notes.begin(), m_notes.end(), searchStartTick,
+            [](const NoteEvent &note, qint64 tick) {
+                return note.startTick < tick;
+            });
+
+        for (auto it = first; it != m_notes.end(); ++it) {
+            const NoteEvent &note = *it;
+            if (note.startTick > m_currentTick) break;
+            if (note.midi == midi &&
+                m_currentTick >= note.startTick &&
+                m_currentTick <= note.startTick + note.durationTick) {
+                return qBound(1, note.velocity, 127);
+            }
+        }
+    }
+    return 96;
 }

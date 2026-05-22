@@ -13,6 +13,8 @@ qt_policy(SET QTP0004 NEW)
 
 qt_add_executable(SmartPianoQt
     src/main.cpp
+    src/audio/MidiSynth.cpp
+    src/audio/MidiSynth.h
     src/core/NoteUtils.cpp
     src/core/NoteUtils.h
     src/core/PianoController.cpp
@@ -39,6 +41,10 @@ target_link_libraries(SmartPianoQt PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
 )
+
+if(WIN32)
+    target_link_libraries(SmartPianoQt PRIVATE winmm)
+endif()
 
 include(GNUInstallDirs)
 

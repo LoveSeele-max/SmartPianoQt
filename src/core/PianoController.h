@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio/MidiSynth.h"
 #include "parser/MidiFileParser.h"
 
 #include <QObject>
@@ -25,6 +26,7 @@ class PianoController : public QObject {
     Q_PROPERTY(int wrongCount READ wrongCount NOTIFY statsChanged)
     Q_PROPERTY(int missedCount READ missedCount NOTIFY statsChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
+    Q_PROPERTY(QString audioStatus READ audioStatus NOTIFY audioStatusChanged)
 
 public:
     explicit PianoController(QObject *parent = nullptr);
@@ -42,6 +44,7 @@ public:
     int wrongCount() const { return m_wrongCount; }
     int missedCount() const { return m_missedCount; }
     QString statusMessage() const { return m_statusMessage; }
+    QString audioStatus() const { return m_synth.statusText(); }
     const QVector<NoteEvent> &noteEvents() const { return m_notes; }
     qint64 currentTickValue() const { return m_currentTick; }
     qint64 totalTickValue() const { return m_totalTicks; }
@@ -72,6 +75,7 @@ signals:
     void practiceChanged();
     void statsChanged();
     void statusMessageChanged();
+    void audioStatusChanged();
 
 private slots:
     void onFrame();
@@ -92,6 +96,7 @@ private:
     qint64 beatToTick(double beat) const;
     double tickToBeat(qint64 tick) const;
     qint64 msToTicks(qint64 elapsedMs) const;
+    int velocityForMidi(int midi) const;
 
     static constexpr int DefaultPpq = 480;
 
@@ -113,6 +118,7 @@ private:
     QSet<int> m_pressedNotes;
     QSet<int> m_autoNotes;
     QSet<int> m_activeNotes;
+    MidiSynth m_synth;
 
     int m_waitTickIndex = 0;
     QSet<int> m_matchedPracticeNotes;
