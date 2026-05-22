@@ -6,7 +6,7 @@ SmartPianoQt 是 Smart Piano 的 Qt 6 桌面版初版。当前目标不是一次
 
 - Qt Quick/QML 界面，包含控制面板、卷帘窗和 61 键虚拟键盘。
 - C++ 播放状态机，支持播放、暂停、停止、拖动进度、BPM 调整和音量调节。
-- Windows 下通过系统 General MIDI 输出播放 Acoustic Grand Piano 钢琴音色。
+- 通过 Qt Multimedia 内置柔和钢琴合成器播放，比系统 General MIDI 更稳定。
 - 练习模式会停在当前音符或和弦，弹对后继续。
 - 支持导入 JSON 和标准 MIDI 文件。
 - 支持本地 MIDI 曲谱库：把 `.mid/.midi` 文件放进 `midi_library/` 后刷新即可加载。
@@ -82,7 +82,7 @@ $env:QT_PREFIX = "D:\Qt\6.11.1\mingw_64"
 ## 下一步
 
 - 接入 RtMidi，迁移 Yamaha PSR-E383 的 `0xFE/0xF8` 过滤。
-- 接入 FluidSynth + SF2 音源，替换当前 Windows General MIDI 的基础钢琴音色。
+- 接入 FluidSynth + SF2 音源，进一步替换当前内置合成钢琴音色。
 - 增加 SQLite 曲谱库和练习记录。
 - 增加 MusicXML / MXL 解析。
 - 为 MIDI 解析、练习判断补单元测试。

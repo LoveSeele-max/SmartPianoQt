@@ -1,8 +1,50 @@
 #pragma once
 
+#include <QAudioFormat>
+#include <QAudioSink>
+#include <QIODevice>
+#include <QMutex>
 #include <QObject>
-#include <QSet>
 #include <QString>
+
+#include <memory>
+#include <vector>
+
+class PianoAudioDevice : public QIODevice {
+    Q_OBJECT
+
+public:
+    explicit PianoAudioDevice(QObject *parent = nullptr);
+
+    void noteOn(int midi, int velocity, int volume);
+    void noteOff(int midi);
+    void stopAll();
+
+    qint64 readData(char *data, qint64 maxSize) override;
+    qint64 writeData(const char *data, qint64 maxSize) override;
+    qint64 bytesAvailable() const override;
+
+private:
+    struct Voice {
+        int midi = 60;
+        double frequency = 261.625565;
+        double phase = 0.0;
+        double age = 0.0;
+        double releaseAge = 0.0;
+        double releaseLevel = 0.0;
+        double gain = 0.8;
+        bool releasing = false;
+    };
+
+    double renderVoice(Voice &voice);
+    double envelope(const Voice &voice) const;
+    void pruneVoices();
+
+    mutable QMutex m_mutex;
+    std::vector<Voice> m_voices;
+    double m_reverbL = 0.0;
+    double m_reverbR = 0.0;
+};
 
 class MidiSynth : public QObject {
     Q_OBJECT
@@ -23,15 +65,11 @@ public:
 private:
     void open();
     void close();
-    void sendShortMessage(unsigned char status, unsigned char data1, unsigned char data2);
-    void setProgram(int program);
 
     bool m_available = false;
-    int m_volume = 127;
+    int m_volume = 118;
     QString m_statusText;
-    QSet<int> m_soundingNotes;
-
-#ifdef Q_OS_WIN
-    void *m_output = nullptr;
-#endif
+    QAudioFormat m_format;
+    std::unique_ptr<QAudioSink> m_audioSink;
+    std::unique_ptr<PianoAudioDevice> m_audioDevice;
 };
