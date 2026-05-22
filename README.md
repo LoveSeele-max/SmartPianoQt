@@ -10,6 +10,7 @@ SmartPianoQt 是 Smart Piano 的 Qt 6 桌面版初版。当前目标不是一次
 - 如果 `soundfonts/` 中存在 `.sf2/.sf3` 且本机可加载 FluidSynth DLL，会优先使用真实采样钢琴音色。
 - 练习模式会停在当前音符或和弦，弹对后继续。
 - 支持导入 JSON 和标准 MIDI 文件。
+- MIDI 解析支持 tempo map 保留、延音踏板、缺失 NoteOff 兜底，并有基础 parser 测试覆盖。
 - 支持本地 MIDI 曲谱库：把 `.mid/.midi` 文件放进 `midi_library/` 后刷新即可加载。
 - 内置《小星星》示例曲。
 
@@ -37,6 +38,14 @@ $env:QT_PREFIX = "D:\Qt\6.11.1\mingw_64"
 cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_PREFIX_PATH=$env:QT_PREFIX
 cmake --build build --parallel 4
 ```
+
+## 测试
+
+```powershell
+ctest --test-dir build --output-on-failure
+```
+
+当前测试覆盖 NoteUtils、JSON parser、MIDI tempo map、sustain pedal、缺失 NoteOff 兜底和异常 VLQ。
 
 ## 运行
 
@@ -113,4 +122,5 @@ $env:FLUIDSYNTH_PREFIX = "E:\fluidsynth-v2.5.4-win10-x64-cpp11"
 - 打包 FluidSynth 运行库和推荐的开源钢琴 SoundFont。
 - 增加 SQLite 曲谱库和练习记录。
 - 增加 MusicXML / MXL 解析。
-- 为 MIDI 解析、练习判断补单元测试。
+- 为 PracticeEngine / seek / 练习判定补单元测试。
+- 将已解析的 MIDI tempo map 接入播放时钟，支持变速 MIDI 的真实速度播放。

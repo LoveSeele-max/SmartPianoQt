@@ -20,6 +20,23 @@ qint64 beatsToTicks(double beats, int ppq)
     return qRound64(beats * double(ppq));
 }
 
+QVector<TempoEvent> tempoMapFromBpm(int bpm)
+{
+    const int clamped = qBound(20, bpm, 260);
+    return { { 0, qRound(60000000.0 / double(clamped)) } };
+}
+
+QVector<TempoEvent> normalizedTempoMap(QVector<TempoEvent> tempos, int bpm)
+{
+    std::sort(tempos.begin(), tempos.end(), [](const TempoEvent &a, const TempoEvent &b) {
+        return a.tick < b.tick;
+    });
+    if (tempos.isEmpty()) {
+        return tempoMapFromBpm(bpm);
+    }
+    return tempos;
+}
+
 }
 
 PianoController::PianoController(QObject *parent)
@@ -210,7 +227,12 @@ void PianoController::noteOff(int midi)
 
 void PianoController::loadDemoSong()
 {
-    QVector<NoteEvent> demo;
+    Song song;
+    song.title = QStringLiteral("小星星 Demo");
+    song.bpm = 100;
+    song.ppq = DefaultPpq;
+    song.tempos = tempoMapFromBpm(song.bpm);
+
     int id = 1;
 
     auto add = [&](int midi, double startBeat, double durationBeat, int finger) {
@@ -222,7 +244,7 @@ void PianoController::loadDemoSong()
         note.durationTick = beatsToTicks(durationBeat, DefaultPpq);
         note.fingering = finger;
         note.noteName = NoteUtils::midiToName(midi);
-        demo.push_back(note);
+        song.notes.push_back(note);
     };
 
     add(60, 0.0, 1.0, 1);
@@ -240,7 +262,7 @@ void PianoController::loadDemoSong()
     add(62, 13.0, 1.0, 2);
     add(60, 14.0, 2.0, 1);
 
-    setSong(QStringLiteral("小星星 Demo"), 100, DefaultPpq, demo);
+    setSong(std::move(song));
     setStatusMessage(QStringLiteral("已加载内置示例曲"));
 }
 
@@ -343,25 +365,26 @@ QVariantMap PianoController::noteToVariant(const NoteEvent &note) const
     return map;
 }
 
-void PianoController::setSong(const QString &title, int bpm, int ppq, QVector<NoteEvent> notes)
+void PianoController::setSong(Song song)
 {
     setPlaying(false);
     m_pressedNotes.clear();
     m_synth.stopAll();
 
-    std::sort(notes.begin(), notes.end(), [](const NoteEvent &a, const NoteEvent &b) {
+    std::sort(song.notes.begin(), song.notes.end(), [](const NoteEvent &a, const NoteEvent &b) {
         if (a.startTick != b.startTick) return a.startTick < b.startTick;
         return a.midi < b.midi;
     });
 
-    m_songTitle = title;
-    m_bpm = qBound(20, bpm, 260);
-    m_ppq = ppq > 0 ? ppq : DefaultPpq;
-    m_notes = std::move(notes);
+    m_songTitle = song.title;
+    m_bpm = qBound(20, song.bpm, 260);
+    m_ppq = song.ppq > 0 ? song.ppq : DefaultPpq;
+    m_tempos = normalizedTempoMap(std::move(song.tempos), m_bpm);
+    m_notes = std::move(song.notes);
     m_currentTick = 0;
     m_preciseTick = 0.0;
-    m_totalTicks = DefaultPpq * 8;
-    m_maxNoteDurationTick = DefaultPpq * 2;
+    m_totalTicks = m_ppq * 8;
+    m_maxNoteDurationTick = m_ppq * 2;
     for (const auto &note : m_notes) {
         m_totalTicks = qMax(m_totalTicks, note.startTick + note.durationTick);
         m_maxNoteDurationTick = qMax(m_maxNoteDurationTick, note.durationTick);
@@ -386,8 +409,9 @@ void PianoController::loadJsonSheet(const QString &path)
         return;
     }
 
-    setSong(parsed.title, parsed.bpm, parsed.ppq, parsed.notes);
-    setStatusMessage(QStringLiteral("已导入 JSON：%1").arg(parsed.title));
+    const QString title = parsed.song.title;
+    setSong(parsed.song);
+    setStatusMessage(QStringLiteral("已导入 JSON：%1").arg(title));
 }
 
 void PianoController::loadMidiFile(const QString &path)
@@ -405,8 +429,11 @@ void PianoController::loadMidiFile(const QString &path)
         return;
     }
 
-    const QString title = parsed.title.isEmpty() ? info.completeBaseName() : parsed.title;
-    setSong(title, parsed.bpm, parsed.ppq, parsed.notes);
+    if (parsed.song.title.isEmpty()) {
+        parsed.song.title = info.completeBaseName();
+    }
+    const QString title = parsed.song.title;
+    setSong(std::move(parsed.song));
     setStatusMessage(QStringLiteral("已加载 MIDI：%1").arg(title));
 }
 

@@ -19,6 +19,7 @@ qt_add_executable(SmartPianoQt
     src/core/NoteUtils.h
     src/core/PianoController.cpp
     src/core/PianoController.h
+    src/core/Song.h
     src/library/MidiLibraryService.cpp
     src/library/MidiLibraryService.h
     src/parser/JsonSheetParser.cpp
@@ -54,6 +55,7 @@ if(BUILD_TESTING)
         tests/test_parsers.cpp
         src/core/NoteUtils.cpp
         src/core/NoteUtils.h
+        src/core/Song.h
         src/parser/JsonSheetParser.cpp
         src/parser/JsonSheetParser.h
         src/parser/MidiFileParser.cpp

@@ -4,6 +4,7 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QVector>
 #include <iostream>
 
 namespace {
@@ -92,13 +93,23 @@ void appendEnd(QByteArray &track, int delta)
     appendEvent(track, delta, { 0xFF, 0x2F, 0x00 });
 }
 
-QByteArray midiFile(const QByteArray &track, int ppq = 480)
+QByteArray midiFile(const QVector<QByteArray> &tracks, int ppq = 480)
 {
     QByteArray header;
-    header += be16(0);
-    header += be16(1);
+    header += be16(tracks.size() > 1 ? 1 : 0);
+    header += be16(tracks.size());
     header += be16(ppq);
-    return chunk("MThd", header) + chunk("MTrk", track);
+
+    QByteArray file = chunk("MThd", header);
+    for (const QByteArray &track : tracks) {
+        file += chunk("MTrk", track);
+    }
+    return file;
+}
+
+QByteArray midiFile(const QByteArray &track, int ppq = 480)
+{
+    return midiFile(QVector<QByteArray>{ track }, ppq);
 }
 
 void testNoteUtils()
@@ -123,14 +134,15 @@ void testJsonParser()
 
     const ParsedJsonSheet parsed = JsonSheetParser::parse(json, QStringLiteral("fallback"));
     expect(parsed.ok, "JSON parser should accept a valid sheet");
-    expect(parsed.title == QStringLiteral("Json Test"), "JSON title should come from name");
-    expect(parsed.bpm == 96, "JSON bpm should be parsed");
-    expect(parsed.ppq == 480, "JSON parser should always use 480 PPQ");
-    expect(parsed.notes.size() == 3, "JSON parser should produce three notes");
-    expect(parsed.notes.at(0).startTick == 0, "first JSON note should start at tick 0");
-    expect(parsed.notes.at(1).startTick == 480, "sequential JSON note should follow cursor beat");
-    expect(parsed.notes.at(1).durationTick == 240, "half-beat JSON note should be 240 ticks");
-    expect(parsed.notes.at(2).startTick == 1920, "explicit JSON start beat should be converted with fixed PPQ");
+    expect(parsed.song.title == QStringLiteral("Json Test"), "JSON title should come from name");
+    expect(parsed.song.bpm == 96, "JSON bpm should be parsed");
+    expect(parsed.song.ppq == 480, "JSON parser should always use 480 PPQ");
+    expect(parsed.song.tempos.size() == 1, "JSON parser should provide a default tempo map");
+    expect(parsed.song.notes.size() == 3, "JSON parser should produce three notes");
+    expect(parsed.song.notes.at(0).startTick == 0, "first JSON note should start at tick 0");
+    expect(parsed.song.notes.at(1).startTick == 480, "sequential JSON note should follow cursor beat");
+    expect(parsed.song.notes.at(1).durationTick == 240, "half-beat JSON note should be 240 ticks");
+    expect(parsed.song.notes.at(2).startTick == 1920, "explicit JSON start beat should be converted with fixed PPQ");
 }
 
 void testMidiSustainAndTempo()
@@ -146,11 +158,11 @@ void testMidiSustainAndTempo()
 
     const ParsedMidi parsed = MidiFileParser::parse(midiFile(track));
     expect(parsed.ok, "MIDI parser should accept sustain test file");
-    expect(parsed.bpm == 120, "MIDI bpm should use the first tempo event");
-    expect(parsed.tempos.size() == 2, "MIDI parser should retain tempo map events");
-    expect(parsed.tempos.at(1).tick == 360, "second tempo event should keep its source tick");
-    expect(parsed.notes.size() == 1, "sustain test should produce one note");
-    expect(parsed.notes.at(0).durationTick == 480, "sustain pedal should extend note until pedal release");
+    expect(parsed.song.bpm == 120, "MIDI bpm should use the first tempo event");
+    expect(parsed.song.tempos.size() == 2, "MIDI parser should retain tempo map events");
+    expect(parsed.song.tempos.at(1).tick == 360, "second tempo event should keep its source tick");
+    expect(parsed.song.notes.size() == 1, "sustain test should produce one note");
+    expect(parsed.song.notes.at(0).durationTick == 480, "sustain pedal should extend note until pedal release");
 }
 
 void testMidiUnclosedNoteFallback()
@@ -161,9 +173,69 @@ void testMidiUnclosedNoteFallback()
 
     const ParsedMidi parsed = MidiFileParser::parse(midiFile(track));
     expect(parsed.ok, "MIDI parser should keep files with missing note-off events usable");
-    expect(parsed.notes.size() == 1, "unclosed note test should produce one fallback note");
-    expect(parsed.notes.at(0).midi == 64, "fallback note should preserve pitch");
-    expect(parsed.notes.at(0).durationTick == 480, "fallback note should get a musically useful duration");
+    expect(parsed.song.notes.size() == 1, "unclosed note test should produce one fallback note");
+    expect(parsed.song.notes.at(0).midi == 64, "fallback note should preserve pitch");
+    expect(parsed.song.notes.at(0).durationTick == 480, "fallback note should get a musically useful duration");
+}
+
+void testMidiDefaultTempo()
+{
+    QByteArray track;
+    appendEvent(track, 0, { 0x90, 67, 100 });
+    appendEvent(track, 240, { 0x80, 67, 0 });
+    appendEnd(track, 0);
+
+    const ParsedMidi parsed = MidiFileParser::parse(midiFile(track));
+    expect(parsed.ok, "MIDI parser should accept files without explicit tempo");
+    expect(parsed.song.tempos.size() == 1, "MIDI parser should add a default tempo");
+    expect(parsed.song.tempos.at(0).tick == 0, "default tempo should start at tick 0");
+    expect(parsed.song.tempos.at(0).microsecondsPerQuarter == 500000, "default tempo should be 120 BPM");
+    expect(parsed.song.bpm == 120, "default MIDI bpm should be 120");
+}
+
+void testMidiTempoSortingAcrossTracks()
+{
+    QByteArray lateTempoTrack;
+    appendTempo(lateTempoTrack, 480, 400000);
+    appendEnd(lateTempoTrack, 0);
+
+    QByteArray earlyTempoAndNotesTrack;
+    appendTempo(earlyTempoAndNotesTrack, 0, 600000);
+    appendEvent(earlyTempoAndNotesTrack, 0, { 0x90, 60, 100 });
+    appendEvent(earlyTempoAndNotesTrack, 120, { 0x80, 60, 0 });
+    appendEnd(earlyTempoAndNotesTrack, 0);
+
+    const ParsedMidi parsed = MidiFileParser::parse(
+        midiFile(QVector<QByteArray>{ lateTempoTrack, earlyTempoAndNotesTrack }));
+    expect(parsed.ok, "MIDI parser should accept multi-track tempo files");
+    expect(parsed.song.tempos.size() == 2, "MIDI parser should keep tempos from multiple tracks");
+    expect(parsed.song.tempos.at(0).tick == 0, "tempo map should be sorted by tick");
+    expect(parsed.song.tempos.at(1).tick == 480, "later tempo should remain after earlier tempo");
+    expect(parsed.song.bpm == 100, "song bpm should be derived from earliest sorted tempo");
+}
+
+void testMidiLateTempoGetsDefaultAtZero()
+{
+    QByteArray track;
+    appendEvent(track, 0, { 0x90, 72, 100 });
+    appendEvent(track, 240, { 0x80, 72, 0 });
+    appendTempo(track, 240, 400000);
+    appendEnd(track, 0);
+
+    const ParsedMidi parsed = MidiFileParser::parse(midiFile(track));
+    expect(parsed.ok, "MIDI parser should accept tempo changes after the first tick");
+    expect(parsed.song.tempos.size() == 2, "late tempo should be preceded by a default tempo");
+    expect(parsed.song.tempos.at(0).tick == 0, "default tempo should define playback from tick 0");
+    expect(parsed.song.tempos.at(0).microsecondsPerQuarter == 500000, "default leading tempo should be 120 BPM");
+    expect(parsed.song.tempos.at(1).tick == 480, "late tempo should keep its original tick");
+}
+
+void testMidiRejectsMalformedVlq()
+{
+    const QByteArray malformedTrack = raw({ 0x81, 0x81, 0x81, 0x81, 0x90, 60, 100 });
+    const ParsedMidi parsed = MidiFileParser::parse(midiFile(malformedTrack));
+    expect(!parsed.ok, "MIDI parser should reject malformed four-byte VLQ values");
+    expect(parsed.error.contains(QStringLiteral("长度编码")), "malformed VLQ should report a length encoding error");
 }
 
 }
@@ -174,6 +246,10 @@ int main()
     testJsonParser();
     testMidiSustainAndTempo();
     testMidiUnclosedNoteFallback();
+    testMidiDefaultTempo();
+    testMidiTempoSortingAcrossTracks();
+    testMidiLateTempoGetsDefaultAtZero();
+    testMidiRejectsMalformedVlq();
 
     if (failures == 0) {
         std::cout << "All parser tests passed.\n";

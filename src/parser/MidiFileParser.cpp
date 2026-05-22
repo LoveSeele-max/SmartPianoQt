@@ -52,7 +52,7 @@ bool readVarLen(const QByteArray &data, int &offset, qint64 &value)
         value = (value << 7) | (byte & 0x7F);
         if ((byte & 0x80) == 0) return true;
     }
-    return true;
+    return false;
 }
 
 int bytesNeededForStatus(int status)
@@ -114,13 +114,11 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
         result.error = QStringLiteral("暂不支持 SMPTE 时间格式的 MIDI 文件");
         return result;
     }
-    result.ppq = division > 0 ? division : 480;
+    result.song.ppq = division > 0 ? division : 480;
 
     QVector<RawMidiEvent> rawEvents;
     QHash<int, qint64> trackEndTicks;
     qint64 lastTick = 0;
-    bool tempoSeen = false;
-
     for (int trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
         if (!readChunk(bytes, offset, id, payload)) break;
         if (id != "MTrk") continue;
@@ -131,7 +129,10 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
 
         while (pos < payload.size()) {
             qint64 delta = 0;
-            if (!readVarLen(payload, pos, delta)) break;
+            if (!readVarLen(payload, pos, delta)) {
+                result.error = QStringLiteral("MIDI 事件长度编码无效");
+                return result;
+            }
             tick += delta;
             lastTick = qMax(lastTick, tick);
 
@@ -148,7 +149,10 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
                 if (pos + 2 > payload.size()) break;
                 const int metaType = quint8(payload.at(pos++));
                 qint64 length = 0;
-                if (!readVarLen(payload, pos, length)) break;
+                if (!readVarLen(payload, pos, length)) {
+                    result.error = QStringLiteral("MIDI 事件长度编码无效");
+                    return result;
+                }
                 if (length < 0 || pos + length > payload.size()) break;
 
                 if (metaType == 0x51 && length == 3) {
@@ -157,14 +161,10 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
                         (quint8(payload.at(pos + 1)) << 8) |
                         quint8(payload.at(pos + 2));
                     if (microsPerQuarter > 0) {
-                        result.tempos.push_back({ tick, microsPerQuarter });
-                        if (!tempoSeen) {
-                            result.bpm = qRound(60000000.0 / microsPerQuarter);
-                            tempoSeen = true;
-                        }
+                        result.song.tempos.push_back({ tick, microsPerQuarter });
                     }
-                } else if ((metaType == 0x03 || metaType == 0x04) && result.title.isEmpty()) {
-                    result.title = QString::fromUtf8(readSizedText(payload, pos, int(length))).trimmed();
+                } else if ((metaType == 0x03 || metaType == 0x04) && result.song.title.isEmpty()) {
+                    result.song.title = QString::fromUtf8(readSizedText(payload, pos, int(length))).trimmed();
                 }
 
                 pos += int(length);
@@ -173,7 +173,10 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
 
             if (status == 0xF0 || status == 0xF7) {
                 qint64 length = 0;
-                if (!readVarLen(payload, pos, length)) break;
+                if (!readVarLen(payload, pos, length)) {
+                    result.error = QStringLiteral("MIDI 事件长度编码无效");
+                    return result;
+                }
                 pos += int(length);
                 continue;
             }
@@ -212,7 +215,7 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
     int idCounter = 1;
 
     auto appendNote = [&](const ActiveNote &start, qint64 endTick) {
-        const qint64 minDuration = qMax<qint64>(1, result.ppq / 16);
+        const qint64 minDuration = qMax<qint64>(1, result.song.ppq / 16);
         NoteEvent note;
         note.id = idCounter++;
         note.midi = start.note;
@@ -223,7 +226,7 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
         note.channel = start.channel;
         note.fingering = 0;
         note.noteName = NoteUtils::midiToName(start.note);
-        result.notes.push_back(note);
+        result.song.notes.push_back(note);
     };
 
     auto finishNote = [&](const RawMidiEvent &event, qint64 endTick) {
@@ -277,17 +280,27 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
     for (auto it = active.cbegin(); it != active.cend(); ++it) {
         for (const auto &start : it.value()) {
             const qint64 endTick = qMax(trackEndTicks.value(start.track, lastTick),
-                                       start.tick + qint64(result.ppq));
+                                       start.tick + qint64(result.song.ppq));
             appendNote(start, endTick);
         }
     }
 
-    std::sort(result.notes.begin(), result.notes.end(), [](const NoteEvent &a, const NoteEvent &b) {
+    std::sort(result.song.tempos.begin(), result.song.tempos.end(), [](const TempoEvent &a, const TempoEvent &b) {
+        return a.tick < b.tick;
+    });
+    if (result.song.tempos.isEmpty()) {
+        result.song.tempos.push_back({ 0, 500000 });
+    } else if (result.song.tempos.first().tick > 0) {
+        result.song.tempos.prepend({ 0, 500000 });
+    }
+    result.song.bpm = qRound(60000000.0 / double(result.song.tempos.first().microsecondsPerQuarter));
+
+    std::sort(result.song.notes.begin(), result.song.notes.end(), [](const NoteEvent &a, const NoteEvent &b) {
         if (a.startTick != b.startTick) return a.startTick < b.startTick;
         return a.midi < b.midi;
     });
 
-    if (result.notes.isEmpty()) {
+    if (result.song.notes.isEmpty()) {
         result.error = QStringLiteral("未在 MIDI 文件中找到有效音符");
         return result;
     }

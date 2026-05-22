@@ -1,18 +1,14 @@
 #pragma once
 
-#include "parser/MidiFileParser.h"
+#include "core/Song.h"
 
 #include <QByteArray>
 #include <QString>
-#include <QVector>
 
 struct ParsedJsonSheet {
     bool ok = false;
-    QString title;
     QString error;
-    int bpm = 100;
-    int ppq = 480;
-    QVector<NoteEvent> notes;
+    Song song;
 };
 
 class JsonSheetParser {

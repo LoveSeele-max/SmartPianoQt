@@ -18,12 +18,18 @@ qint64 beatsToTicks(double beats, int ppq)
     return qRound64(beats * double(ppq));
 }
 
+QVector<TempoEvent> tempoMapFromBpm(int bpm)
+{
+    const int clamped = qBound(20, bpm, 260);
+    return { { 0, qRound(60000000.0 / double(clamped)) } };
+}
+
 }
 
 ParsedJsonSheet JsonSheetParser::parse(const QByteArray &bytes, const QString &fallbackTitle)
 {
     ParsedJsonSheet result;
-    result.ppq = JsonPpq;
+    result.song.ppq = JsonPpq;
 
     QJsonParseError parseError;
     const QJsonDocument doc = QJsonDocument::fromJson(bytes, &parseError);
@@ -39,9 +45,10 @@ ParsedJsonSheet JsonSheetParser::parse(const QByteArray &bytes, const QString &f
         return result;
     }
 
-    result.bpm = root.value(QStringLiteral("bpm")).toInt(100);
-    result.title = root.value(QStringLiteral("name")).toString(fallbackTitle);
-    result.notes.reserve(data.size());
+    result.song.bpm = root.value(QStringLiteral("bpm")).toInt(100);
+    result.song.title = root.value(QStringLiteral("name")).toString(fallbackTitle);
+    result.song.tempos = tempoMapFromBpm(result.song.bpm);
+    result.song.notes.reserve(data.size());
 
     double cursorBeat = 0.0;
     int id = 1;
@@ -68,14 +75,14 @@ ParsedJsonSheet JsonSheetParser::parse(const QByteArray &bytes, const QString &f
         note.durationTick = qMax<qint64>(JsonPpq / 8, beatsToTicks(durationBeat, JsonPpq));
         note.fingering = item.value(QStringLiteral("fingering")).toInt(0);
         note.noteName = NoteUtils::midiToName(midi);
-        result.notes.push_back(note);
+        result.song.notes.push_back(note);
 
         if (!item.contains(QStringLiteral("startTimeBeat"))) {
             cursorBeat += durationBeat;
         }
     }
 
-    if (result.notes.isEmpty()) {
+    if (result.song.notes.isEmpty()) {
         result.error = QStringLiteral("JSON 曲谱中没有可用音符");
         return result;
     }

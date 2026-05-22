@@ -1,7 +1,7 @@
 #pragma once
 
 #include "audio/MidiSynth.h"
-#include "parser/MidiFileParser.h"
+#include "core/Song.h"
 
 #include <QObject>
 #include <QSet>
@@ -94,7 +94,7 @@ private slots:
 
 private:
     QVariantMap noteToVariant(const NoteEvent &note) const;
-    void setSong(const QString &title, int bpm, int ppq, QVector<NoteEvent> notes);
+    void setSong(Song song);
     void loadJsonSheet(const QString &path);
     void loadMidiFile(const QString &path);
     void rebuildPracticeTicks();
@@ -116,6 +116,7 @@ private:
     QString m_songTitle;
     int m_bpm = 100;
     int m_ppq = DefaultPpq;
+    QVector<TempoEvent> m_tempos;
     QVector<NoteEvent> m_notes;
     QVector<qint64> m_practiceTicks;
 
