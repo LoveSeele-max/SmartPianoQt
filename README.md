@@ -90,6 +90,18 @@ $env:QT_PREFIX = "D:\Qt\6.11.1\mingw_64"
 
 如果没有检测到 FluidSynth 或 SoundFont，应用会自动退回内置柔和钢琴合成器。
 
+本机已支持默认识别这个路径：
+
+```text
+E:\fluidsynth-v2.5.4-win10-x64-cpp11
+```
+
+如果安装在别的位置，可以设置：
+
+```powershell
+$env:FLUIDSYNTH_PREFIX = "E:\fluidsynth-v2.5.4-win10-x64-cpp11"
+```
+
 参考入口：
 
 - FluidSynth 下载：https://www.fluidsynth.org/download/

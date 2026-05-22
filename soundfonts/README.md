@@ -10,6 +10,12 @@ You also need a FluidSynth runtime DLL available to the app. On Windows, either 
 $env:FLUIDSYNTH_DLL = "C:\path\to\libfluidsynth-3.dll"
 ```
 
+This local path is detected automatically by the app and by `run.ps1`:
+
+```text
+E:\fluidsynth-v2.5.4-win10-x64-cpp11
+```
+
 Useful starting points:
 
 - FluidSynth downloads: https://www.fluidsynth.org/download/

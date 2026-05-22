@@ -12,6 +12,16 @@
 #include <cmath>
 #include <cstring>
 
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 namespace {
 
 constexpr int SampleRate = 44100;
@@ -387,6 +397,12 @@ bool MidiSynth::openFluidSynth()
         return false;
     }
 
+#ifdef Q_OS_WIN
+    const QString libraryDir = QFileInfo(libraryPath).absolutePath();
+    const QString nativeLibraryDir = QDir::toNativeSeparators(libraryDir);
+    SetDllDirectoryW(reinterpret_cast<LPCWSTR>(nativeLibraryDir.utf16()));
+#endif
+
     m_fluidLibrary.setFileName(libraryPath);
     if (!m_fluidLibrary.load()) {
         return false;
@@ -556,11 +572,26 @@ QString MidiSynth::resolveFluidSynthLibraryPath() const
     const QString envPath = qEnvironmentVariable("FLUIDSYNTH_DLL");
     if (!envPath.isEmpty() && QFileInfo::exists(envPath)) return envPath;
 
+    const QString envPrefix = qEnvironmentVariable("FLUIDSYNTH_PREFIX");
+    if (!envPrefix.isEmpty()) {
+        const QStringList names = {
+            QStringLiteral("libfluidsynth-3.dll"),
+            QStringLiteral("libfluidsynth-2.dll"),
+            QStringLiteral("libfluidsynth.dll")
+        };
+        for (const QString &name : names) {
+            const QString path = QDir(envPrefix).absoluteFilePath(QStringLiteral("bin/%1").arg(name));
+            if (QFileInfo::exists(path)) return path;
+        }
+    }
+
     const QStringList explicitPaths = {
         QCoreApplication::applicationDirPath() + QStringLiteral("/libfluidsynth-3.dll"),
         QCoreApplication::applicationDirPath() + QStringLiteral("/libfluidsynth-2.dll"),
         QDir::current().absoluteFilePath(QStringLiteral("libfluidsynth-3.dll")),
         QDir::current().absoluteFilePath(QStringLiteral("libfluidsynth-2.dll")),
+        QStringLiteral("E:/fluidsynth-v2.5.4-win10-x64-cpp11/bin/libfluidsynth-3.dll"),
+        QStringLiteral("E:/fluidsynth-v2.5.4-win10-x64-cpp11/bin/libfluidsynth-2.dll"),
         QStringLiteral("C:/Program Files/FluidSynth/bin/libfluidsynth-3.dll"),
         QStringLiteral("C:/Program Files/FluidSynth/bin/libfluidsynth-2.dll"),
         QStringLiteral("C:/msys64/mingw64/bin/libfluidsynth-3.dll"),
