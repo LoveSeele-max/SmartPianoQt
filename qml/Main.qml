@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import SmartPianoQt.Controls 1.0
 
 ApplicationWindow {
     id: root
@@ -60,21 +61,12 @@ ApplicationWindow {
         target: piano
         function onActiveNotesChanged() {
             rebuildActiveSet()
-            rollCanvas.requestPaint()
         }
         function onPracticeChanged() {
             rebuildExpectedSet()
-            rollCanvas.requestPaint()
-        }
-        function onNotesChanged() {
-            rollCanvas.requestPaint()
-        }
-        function onPositionChanged() {
-            rollCanvas.requestPaint()
         }
         function onModeChanged() {
             rebuildExpectedSet()
-            rollCanvas.requestPaint()
         }
     }
 
@@ -296,128 +288,9 @@ ApplicationWindow {
                     border.color: "#2f3036"
                     clip: true
 
-                    Canvas {
-                        id: rollCanvas
+                    PianoRollView {
                         anchors.fill: parent
-                        antialiasing: true
-
-                        onPaint: {
-                            var ctx = getContext("2d")
-                            var w = width
-                            var h = height
-                            ctx.clearRect(0, 0, w, h)
-                            ctx.fillStyle = "#09090b"
-                            ctx.fillRect(0, 0, w, h)
-
-                            var gutter = 58
-                            var ruler = 34
-                            var bottomPad = 24
-                            var trackTop = ruler + 12
-                            var trackBottom = h - bottomPad
-                            var trackH = Math.max(120, trackBottom - trackTop)
-                            var playheadX = gutter + (w - gutter) * 0.42
-                            var pixelsPerBeat = Math.max(58, Math.min(120, (w - gutter) / 11))
-                            var minMidi = 36
-                            var maxMidi = 96
-                            var span = maxMidi - minMidi
-                            var current = piano.currentBeat
-
-                            var grad = ctx.createLinearGradient(0, 0, w, h)
-                            grad.addColorStop(0, "rgba(18, 161, 177, 0.16)")
-                            grad.addColorStop(0.45, "rgba(24, 24, 27, 0.82)")
-                            grad.addColorStop(1, "rgba(12, 14, 18, 1.0)")
-                            ctx.fillStyle = grad
-                            ctx.fillRect(0, 0, w, h)
-
-                            ctx.fillStyle = "rgba(24,24,27,0.92)"
-                            ctx.fillRect(0, 0, gutter, h)
-                            ctx.fillStyle = "rgba(9,9,11,0.78)"
-                            ctx.fillRect(gutter, 0, w - gutter, ruler)
-
-                            for (var midi = minMidi; midi <= maxMidi; ++midi) {
-                                var y = trackTop + (1 - (midi - minMidi) / span) * trackH
-                                var octave = midi % 12 === 0
-                                ctx.strokeStyle = octave ? "rgba(20,184,166,0.22)" : "rgba(255,255,255,0.045)"
-                                ctx.lineWidth = octave ? 1 : 0.5
-                                ctx.beginPath()
-                                ctx.moveTo(gutter, y)
-                                ctx.lineTo(w, y)
-                                ctx.stroke()
-
-                                if (octave) {
-                                    ctx.fillStyle = "rgba(228,228,231,0.72)"
-                                    ctx.font = "10px Segoe UI"
-                                    ctx.textAlign = "right"
-                                    ctx.textBaseline = "middle"
-                                    ctx.fillText(noteName(midi), gutter - 9, y)
-                                }
-                            }
-
-                            var startBeat = Math.floor(current - 5)
-                            var endBeat = Math.ceil(current + 8)
-                            for (var b = Math.max(0, startBeat); b <= Math.min(piano.totalBeats + 1, endBeat); ++b) {
-                                var x = (b - current) * pixelsPerBeat + playheadX
-                                var measure = b % 4 === 0
-                                ctx.strokeStyle = measure ? "rgba(20,184,166,0.35)" : "rgba(255,255,255,0.08)"
-                                ctx.lineWidth = measure ? 1.2 : 0.5
-                                ctx.beginPath()
-                                ctx.moveTo(x, ruler)
-                                ctx.lineTo(x, h)
-                                ctx.stroke()
-
-                                ctx.fillStyle = measure ? "rgba(153,246,228,0.94)" : "rgba(161,161,170,0.58)"
-                                ctx.font = measure ? "bold 10px Segoe UI" : "9px Segoe UI"
-                                ctx.textAlign = "center"
-                                ctx.textBaseline = "middle"
-                                ctx.fillText(measure ? "M" + (Math.floor(b / 4) + 1) : "" + (b + 1), x, ruler / 2)
-                            }
-
-                            var notes = piano.notes
-                            for (var i = 0; i < notes.length; ++i) {
-                                var n = notes[i]
-                                var nx = (n.startBeat - current) * pixelsPerBeat + playheadX
-                                var nw = Math.max(n.durationBeat * pixelsPerBeat - 10, 20)
-                                if (nx < gutter - nw - 70 || nx > w + 70)
-                                    continue
-
-                                var ny = trackTop + (1 - (n.midi - minMidi) / span) * trackH
-                                var active = current >= n.startBeat - 0.001 && current <= n.startBeat + n.durationBeat
-                                var expected = expectedSet[n.midi] && piano.mode === "practice" && Math.abs(n.startBeat - current) < 0.01
-                                var played = n.played
-                                var fill = expected ? "#facc15" : active ? "#5eead4" : played ? "#64748b" : "#38bdf8"
-                                var edge = expected ? "#fef08a" : active ? "#ccfbf1" : "#bae6fd"
-
-                                ctx.shadowColor = fill
-                                ctx.shadowBlur = expected ? 18 : active ? 14 : 4
-                                ctx.fillStyle = fill
-                                ctx.strokeStyle = edge
-                                ctx.lineWidth = 1
-
-                                ctx.beginPath()
-                                ctx.roundedRect(nx, ny - 9, nw, 18, 5, 5)
-                                ctx.fill()
-                                ctx.shadowBlur = 0
-                                ctx.stroke()
-
-                                if (nw > 34) {
-                                    ctx.fillStyle = "#020617"
-                                    ctx.font = "bold 10px Segoe UI"
-                                    ctx.textAlign = "center"
-                                    ctx.textBaseline = "middle"
-                                    ctx.fillText(n.note, nx + nw / 2, ny)
-                                }
-                            }
-
-                            ctx.strokeStyle = "#f8fafc"
-                            ctx.lineWidth = 2
-                            ctx.shadowColor = "#f8fafc"
-                            ctx.shadowBlur = 10
-                            ctx.beginPath()
-                            ctx.moveTo(playheadX, ruler)
-                            ctx.lineTo(playheadX, h)
-                            ctx.stroke()
-                            ctx.shadowBlur = 0
-                        }
+                        controller: piano
                     }
                 }
 

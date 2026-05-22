@@ -17,6 +17,8 @@ qt_add_executable(SmartPianoQt
     src/core/NoteUtils.h
     src/core/PianoController.cpp
     src/core/PianoController.h
+    src/ui/PianoRollItem.cpp
+    src/ui/PianoRollItem.h
     src/parser/MidiFileParser.cpp
     src/parser/MidiFileParser.h
 )

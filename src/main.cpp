@@ -1,9 +1,11 @@
 #include "core/PianoController.h"
+#include "ui/PianoRollItem.h"
 
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <qqml.h>
 
 int main(int argc, char *argv[])
 {
@@ -11,6 +13,7 @@ int main(int argc, char *argv[])
     QGuiApplication::setApplicationName(QStringLiteral("SmartPianoQt"));
     QGuiApplication::setOrganizationName(QStringLiteral("SmartPiano"));
     QQuickStyle::setStyle(QStringLiteral("Fusion"));
+    qmlRegisterType<PianoRollItem>("SmartPianoQt.Controls", 1, 0, "PianoRollView");
 
     PianoController controller;
 

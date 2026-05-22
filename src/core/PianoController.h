@@ -42,6 +42,11 @@ public:
     int wrongCount() const { return m_wrongCount; }
     int missedCount() const { return m_missedCount; }
     QString statusMessage() const { return m_statusMessage; }
+    const QVector<NoteEvent> &noteEvents() const { return m_notes; }
+    qint64 currentTickValue() const { return m_currentTick; }
+    qint64 totalTickValue() const { return m_totalTicks; }
+    qint64 expectedTickValue() const;
+    int ppq() const { return m_ppq; }
 
 public slots:
     void setBpm(int bpm);
@@ -57,6 +62,7 @@ public slots:
 
 signals:
     void songChanged();
+    void frameChanged();
     void bpmChanged();
     void positionChanged();
     void playbackStateChanged();
@@ -97,6 +103,7 @@ private:
 
     qint64 m_currentTick = 0;
     qint64 m_totalTicks = DefaultPpq * 8;
+    qint64 m_maxNoteDurationTick = DefaultPpq * 2;
 
     QString m_mode = QStringLiteral("auto");
     bool m_playing = false;
@@ -114,4 +121,5 @@ private:
     int m_missedCount = 0;
 
     QString m_statusMessage;
+    qint64 m_positionNotifyAccumulatorMs = 0;
 };

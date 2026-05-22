@@ -9,6 +9,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
+#include <QtMath>
 #include <QVariantMap>
 #include <algorithm>
 
@@ -16,6 +17,7 @@ PianoController::PianoController(QObject *parent)
     : QObject(parent)
 {
     m_timer.setInterval(16);
+    m_timer.setTimerType(Qt::PreciseTimer);
     connect(&m_timer, &QTimer::timeout, this, &PianoController::onFrame);
     loadDemoSong();
 }
@@ -65,6 +67,16 @@ QVariantList PianoController::expectedNotes() const
         if (note.startTick == tick) list.push_back(noteToVariant(note));
     }
     return list;
+}
+
+qint64 PianoController::expectedTickValue() const
+{
+    if (m_mode != QStringLiteral("practice") ||
+        m_waitTickIndex < 0 ||
+        m_waitTickIndex >= m_practiceTicks.size()) {
+        return -1;
+    }
+    return m_practiceTicks.at(m_waitTickIndex);
 }
 
 void PianoController::setBpm(int bpm)
@@ -261,8 +273,15 @@ void PianoController::onFrame()
             m_currentTick = m_totalTicks;
             setPlaying(false);
             setStatusMessage(QStringLiteral("播放完成"));
+            emit positionChanged();
+        } else {
+            m_positionNotifyAccumulatorMs += elapsedMs;
+            if (m_positionNotifyAccumulatorMs >= 80) {
+                m_positionNotifyAccumulatorMs = 0;
+                emit positionChanged();
+            }
         }
-        emit positionChanged();
+        emit frameChanged();
     }
 
     refreshActiveNotes();
@@ -297,8 +316,10 @@ void PianoController::setSong(const QString &title, int bpm, int ppq, QVector<No
     m_notes = std::move(notes);
     m_currentTick = 0;
     m_totalTicks = DefaultPpq * 8;
+    m_maxNoteDurationTick = DefaultPpq * 2;
     for (const auto &note : m_notes) {
         m_totalTicks = qMax(m_totalTicks, note.startTick + note.durationTick);
+        m_maxNoteDurationTick = qMax(m_maxNoteDurationTick, note.durationTick);
     }
 
     resetPracticeState(true);
@@ -481,7 +502,15 @@ void PianoController::refreshActiveNotes()
 {
     QSet<int> autoNotes;
     if (m_mode == QStringLiteral("auto") && m_playing) {
-        for (const auto &note : m_notes) {
+        const qint64 searchStartTick = qMax<qint64>(0, m_currentTick - m_maxNoteDurationTick - 1);
+        const auto first = std::lower_bound(m_notes.begin(), m_notes.end(), searchStartTick,
+            [](const NoteEvent &note, qint64 tick) {
+                return note.startTick < tick;
+            });
+
+        for (auto it = first; it != m_notes.end(); ++it) {
+            const NoteEvent &note = *it;
+            if (note.startTick > m_currentTick) break;
             if (m_currentTick >= note.startTick &&
                 m_currentTick <= note.startTick + note.durationTick) {
                 autoNotes.insert(note.midi);
@@ -505,6 +534,7 @@ void PianoController::setPlaying(bool playing)
     if (m_playing) {
         m_timer.start();
         m_frameClock.restart();
+        m_positionNotifyAccumulatorMs = 0;
     } else {
         m_timer.stop();
     }
