@@ -1,0 +1,7 @@
+build/
+out/
+.qtcreator/
+*.user
+*.autosave
+*.qmlc
+*.jsc

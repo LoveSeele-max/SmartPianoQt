@@ -1,0 +1,20 @@
+{
+  "name": "Twinkle Demo",
+  "bpm": 100,
+  "data": [
+    { "note": "C4", "duration": 1, "fingering": 1 },
+    { "note": "C4", "duration": 1, "fingering": 1 },
+    { "note": "G4", "duration": 1, "fingering": 5 },
+    { "note": "G4", "duration": 1, "fingering": 5 },
+    { "note": "A4", "duration": 1, "fingering": 5 },
+    { "note": "A4", "duration": 1, "fingering": 5 },
+    { "note": "G4", "duration": 2, "fingering": 4 },
+    { "note": "F4", "duration": 1, "fingering": 4 },
+    { "note": "F4", "duration": 1, "fingering": 4 },
+    { "note": "E4", "duration": 1, "fingering": 3 },
+    { "note": "E4", "duration": 1, "fingering": 3 },
+    { "note": "D4", "duration": 1, "fingering": 2 },
+    { "note": "D4", "duration": 1, "fingering": 2 },
+    { "note": "C4", "duration": 2, "fingering": 1 }
+  ]
+}
