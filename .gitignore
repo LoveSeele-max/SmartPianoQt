@@ -5,3 +5,5 @@ out/
 *.autosave
 *.qmlc
 *.jsc
+midi_library/*.mid
+midi_library/*.midi

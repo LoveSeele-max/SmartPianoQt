@@ -13,6 +13,7 @@ public:
 
     bool isAvailable() const { return m_available; }
     QString statusText() const { return m_statusText; }
+    int volume() const { return m_volume; }
 
     void noteOn(int midi, int velocity = 92);
     void noteOff(int midi);

@@ -27,6 +27,9 @@ class PianoController : public QObject {
     Q_PROPERTY(int missedCount READ missedCount NOTIFY statsChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(QString audioStatus READ audioStatus NOTIFY audioStatusChanged)
+    Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
+    Q_PROPERTY(QVariantList localMidiFiles READ localMidiFiles NOTIFY localMidiLibraryChanged)
+    Q_PROPERTY(QString localMidiLibraryPath READ localMidiLibraryPath NOTIFY localMidiLibraryChanged)
 
 public:
     explicit PianoController(QObject *parent = nullptr);
@@ -45,6 +48,9 @@ public:
     int missedCount() const { return m_missedCount; }
     QString statusMessage() const { return m_statusMessage; }
     QString audioStatus() const { return m_synth.statusText(); }
+    int volume() const { return m_synth.volume(); }
+    QVariantList localMidiFiles() const { return m_localMidiFiles; }
+    QString localMidiLibraryPath() const { return m_localMidiLibraryPath; }
     const QVector<NoteEvent> &noteEvents() const { return m_notes; }
     qint64 currentTickValue() const { return m_currentTick; }
     qint64 totalTickValue() const { return m_totalTicks; }
@@ -54,6 +60,7 @@ public:
 public slots:
     void setBpm(int bpm);
     void setMode(const QString &mode);
+    void setVolume(int volume);
 
     Q_INVOKABLE void playPause();
     Q_INVOKABLE void stop();
@@ -62,6 +69,9 @@ public slots:
     Q_INVOKABLE void noteOff(int midi);
     Q_INVOKABLE void loadDemoSong();
     Q_INVOKABLE void loadSheet(const QUrl &url);
+    Q_INVOKABLE void refreshLocalMidiLibrary();
+    Q_INVOKABLE void loadLocalMidi(int index);
+    Q_INVOKABLE void openLocalMidiLibrary();
 
 signals:
     void songChanged();
@@ -76,6 +86,8 @@ signals:
     void statsChanged();
     void statusMessageChanged();
     void audioStatusChanged();
+    void volumeChanged();
+    void localMidiLibraryChanged();
 
 private slots:
     void onFrame();
@@ -84,6 +96,8 @@ private:
     QVariantMap noteToVariant(const NoteEvent &note) const;
     void setSong(const QString &title, int bpm, int ppq, QVector<NoteEvent> notes);
     void loadJsonSheet(const QString &path);
+    void loadMidiFile(const QString &path);
+    QString resolveLocalMidiLibraryPath() const;
     void rebuildPracticeTicks();
     void preparePracticeAtCurrentPosition();
     void evaluatePracticeNote(int midi);
@@ -128,4 +142,6 @@ private:
 
     QString m_statusMessage;
     qint64 m_positionNotifyAccumulatorMs = 0;
+    QString m_localMidiLibraryPath;
+    QVariantList m_localMidiFiles;
 };

@@ -5,11 +5,15 @@
 
 #include <QFile>
 #include <QFileInfo>
+#include <QCoreApplication>
+#include <QDesktopServices>
+#include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
 #include <QtMath>
+#include <QUrl>
 #include <QVariantMap>
 #include <algorithm>
 
@@ -19,6 +23,8 @@ PianoController::PianoController(QObject *parent)
     m_timer.setInterval(16);
     m_timer.setTimerType(Qt::PreciseTimer);
     connect(&m_timer, &QTimer::timeout, this, &PianoController::onFrame);
+    m_localMidiLibraryPath = resolveLocalMidiLibraryPath();
+    refreshLocalMidiLibrary();
     loadDemoSong();
 }
 
@@ -106,6 +112,14 @@ void PianoController::setMode(const QString &mode)
     emit modeChanged();
     emit practiceChanged();
     emit notesChanged();
+}
+
+void PianoController::setVolume(int volume)
+{
+    const int clamped = qBound(0, volume, 127);
+    if (m_synth.volume() == clamped) return;
+    m_synth.setVolume(clamped);
+    emit volumeChanged();
 }
 
 void PianoController::playPause()
@@ -240,21 +254,7 @@ void PianoController::loadSheet(const QUrl &url)
         }
 
         if (suffix == QStringLiteral("mid") || suffix == QStringLiteral("midi")) {
-            QFile file(path);
-            if (!file.open(QIODevice::ReadOnly)) {
-                setStatusMessage(QStringLiteral("无法读取 MIDI 文件"));
-                return;
-            }
-
-            ParsedMidi parsed = MidiFileParser::parse(file.readAll());
-            if (!parsed.ok) {
-                setStatusMessage(parsed.error);
-                return;
-            }
-
-            const QString title = parsed.title.isEmpty() ? info.completeBaseName() : parsed.title;
-            setSong(title, parsed.bpm, parsed.ppq, parsed.notes);
-            setStatusMessage(QStringLiteral("已导入 MIDI：%1").arg(title));
+            loadMidiFile(path);
             return;
         }
 
@@ -262,6 +262,54 @@ void PianoController::loadSheet(const QUrl &url)
     } catch (...) {
         setStatusMessage(QStringLiteral("导入失败，请检查文件格式"));
     }
+}
+
+void PianoController::refreshLocalMidiLibrary()
+{
+    QDir dir(m_localMidiLibraryPath);
+    if (!dir.exists()) {
+        dir.mkpath(QStringLiteral("."));
+    }
+
+    const QFileInfoList files = dir.entryInfoList(
+        { QStringLiteral("*.mid"), QStringLiteral("*.midi") },
+        QDir::Files | QDir::Readable,
+        QDir::Name | QDir::IgnoreCase);
+
+    QVariantList entries;
+    entries.reserve(files.size());
+    for (const QFileInfo &file : files) {
+        QVariantMap item;
+        item.insert(QStringLiteral("name"), file.completeBaseName());
+        item.insert(QStringLiteral("fileName"), file.fileName());
+        item.insert(QStringLiteral("path"), file.absoluteFilePath());
+        item.insert(QStringLiteral("sizeKb"), qMax<qint64>(1, file.size() / 1024));
+        entries.push_back(item);
+    }
+
+    m_localMidiFiles = entries;
+    emit localMidiLibraryChanged();
+    setStatusMessage(QStringLiteral("本地 MIDI 库已刷新：%1 首").arg(entries.size()));
+}
+
+void PianoController::loadLocalMidi(int index)
+{
+    if (index < 0 || index >= m_localMidiFiles.size()) {
+        setStatusMessage(QStringLiteral("请选择本地 MIDI 曲谱"));
+        return;
+    }
+
+    const QVariantMap item = m_localMidiFiles.at(index).toMap();
+    loadMidiFile(item.value(QStringLiteral("path")).toString());
+}
+
+void PianoController::openLocalMidiLibrary()
+{
+    QDir dir(m_localMidiLibraryPath);
+    if (!dir.exists()) {
+        dir.mkpath(QStringLiteral("."));
+    }
+    QDesktopServices::openUrl(QUrl::fromLocalFile(dir.absolutePath()));
 }
 
 void PianoController::onFrame()
@@ -405,6 +453,49 @@ void PianoController::loadJsonSheet(const QString &path)
 
     setSong(title, bpm, DefaultPpq, parsed);
     setStatusMessage(QStringLiteral("已导入 JSON：%1").arg(title));
+}
+
+void PianoController::loadMidiFile(const QString &path)
+{
+    const QFileInfo info(path);
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        setStatusMessage(QStringLiteral("无法读取 MIDI 文件"));
+        return;
+    }
+
+    ParsedMidi parsed = MidiFileParser::parse(file.readAll());
+    if (!parsed.ok) {
+        setStatusMessage(parsed.error);
+        return;
+    }
+
+    const QString title = parsed.title.isEmpty() ? info.completeBaseName() : parsed.title;
+    setSong(title, parsed.bpm, parsed.ppq, parsed.notes);
+    setStatusMessage(QStringLiteral("已加载 MIDI：%1").arg(title));
+}
+
+QString PianoController::resolveLocalMidiLibraryPath() const
+{
+    auto findFrom = [](QDir dir) -> QString {
+        for (int i = 0; i < 6; ++i) {
+            const QString candidate = dir.absoluteFilePath(QStringLiteral("midi_library"));
+            if (QDir(candidate).exists()) return QDir(candidate).absolutePath();
+            if (!dir.cdUp()) break;
+        }
+        return {};
+    };
+
+    QString path = findFrom(QDir::current());
+    if (!path.isEmpty()) return path;
+
+    path = findFrom(QDir(QCoreApplication::applicationDirPath()));
+    if (!path.isEmpty()) return path;
+
+    QDir dir(QDir::current());
+    const QString created = dir.absoluteFilePath(QStringLiteral("midi_library"));
+    dir.mkpath(QStringLiteral("midi_library"));
+    return QDir(created).absolutePath();
 }
 
 void PianoController::rebuildPracticeTicks()

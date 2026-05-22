@@ -5,10 +5,11 @@ SmartPianoQt 是 Smart Piano 的 Qt 6 桌面版初版。当前目标不是一次
 ## 当前能力
 
 - Qt Quick/QML 界面，包含控制面板、卷帘窗和 61 键虚拟键盘。
-- C++ 播放状态机，支持播放、暂停、停止、拖动进度和 BPM 调整。
+- C++ 播放状态机，支持播放、暂停、停止、拖动进度、BPM 调整和音量调节。
 - Windows 下通过系统 General MIDI 输出播放 Acoustic Grand Piano 钢琴音色。
 - 练习模式会停在当前音符或和弦，弹对后继续。
 - 支持导入 JSON 和标准 MIDI 文件。
+- 支持本地 MIDI 曲谱库：把 `.mid/.midi` 文件放进 `midi_library/` 后刷新即可加载。
 - 内置《小星星》示例曲。
 
 ## 本机环境
@@ -71,6 +72,12 @@ $env:QT_PREFIX = "D:\Qt\6.11.1\mingw_64"
 - `durationBeat` 或 `duration`
 - `velocity`
 - `fingering`
+
+## 本地 MIDI 库
+
+把下载好的 `.mid` 或 `.midi` 文件放到项目根目录的 [midi_library](midi_library) 文件夹里。应用启动时会自动扫描，也可以在左侧面板点击“刷新”重新读取。
+
+为了避免误提交曲谱文件，`midi_library/*.mid` 和 `midi_library/*.midi` 已加入 `.gitignore`。
 
 ## 下一步
 
