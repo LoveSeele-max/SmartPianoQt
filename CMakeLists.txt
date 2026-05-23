@@ -26,6 +26,8 @@ qt_add_executable(SmartPianoQt
     src/parser/JsonSheetParser.h
     src/playback/PlaybackClock.cpp
     src/playback/PlaybackClock.h
+    src/practice/PracticeEngine.cpp
+    src/practice/PracticeEngine.h
     src/ui/PianoRollItem.cpp
     src/ui/PianoRollItem.h
     src/parser/MidiFileParser.cpp
@@ -64,6 +66,8 @@ if(BUILD_TESTING)
         src/parser/MidiFileParser.h
         src/playback/PlaybackClock.cpp
         src/playback/PlaybackClock.h
+        src/practice/PracticeEngine.cpp
+        src/practice/PracticeEngine.h
     )
 
     target_include_directories(SmartPianoQtTests PRIVATE

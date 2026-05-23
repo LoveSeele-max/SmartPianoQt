@@ -68,13 +68,13 @@ QVariantList PianoController::activeNotes() const
 QVariantList PianoController::expectedNotes() const
 {
     QVariantList list;
-    if (m_mode != QStringLiteral("practice") ||
-        m_waitTickIndex < 0 ||
-        m_waitTickIndex >= m_practiceTicks.size()) {
+    if (m_mode != QStringLiteral("practice")) {
         return list;
     }
 
-    const qint64 tick = m_practiceTicks.at(m_waitTickIndex);
+    const qint64 tick = m_practice.expectedTick();
+    if (tick < 0) return list;
+
     for (const auto &note : m_notes) {
         if (note.startTick == tick) list.push_back(noteToVariant(note));
     }
@@ -83,12 +83,7 @@ QVariantList PianoController::expectedNotes() const
 
 qint64 PianoController::expectedTickValue() const
 {
-    if (m_mode != QStringLiteral("practice") ||
-        m_waitTickIndex < 0 ||
-        m_waitTickIndex >= m_practiceTicks.size()) {
-        return -1;
-    }
-    return m_practiceTicks.at(m_waitTickIndex);
+    return m_mode == QStringLiteral("practice") ? m_practice.expectedTick() : -1;
 }
 
 void PianoController::setBpm(int bpm)
@@ -374,8 +369,8 @@ void PianoController::setSong(Song song)
         m_maxNoteDurationTick = qMax(m_maxNoteDurationTick, note.durationTick);
     }
 
+    m_practice.setSong(m_notes);
     resetPracticeState(true);
-    rebuildPracticeTicks();
     refreshActiveNotes();
 
     emit songChanged();
@@ -421,65 +416,47 @@ void PianoController::loadMidiFile(const QString &path)
     setStatusMessage(QStringLiteral("已加载 MIDI：%1").arg(title));
 }
 
-void PianoController::rebuildPracticeTicks()
-{
-    m_practiceTicks.clear();
-    qint64 last = -1;
-    for (const auto &note : m_notes) {
-        if (note.startTick != last) {
-            m_practiceTicks.push_back(note.startTick);
-            last = note.startTick;
-        }
-    }
-    m_waitTickIndex = 0;
-}
-
 void PianoController::preparePracticeAtCurrentPosition()
 {
-    if (m_practiceTicks.isEmpty()) return;
+    if (!m_practice.seek(m_currentTick)) return;
 
-    auto it = std::lower_bound(m_practiceTicks.begin(), m_practiceTicks.end(), m_currentTick);
-    if (it == m_practiceTicks.end()) {
-        m_waitTickIndex = m_practiceTicks.size() - 1;
-    } else {
-        m_waitTickIndex = int(std::distance(m_practiceTicks.begin(), it));
-    }
-
-    m_currentTick = m_practiceTicks.at(m_waitTickIndex);
+    m_currentTick = m_practice.expectedTick();
     m_preciseTick = double(m_currentTick);
-    m_matchedPracticeNotes.clear();
     emit positionChanged();
     emit practiceChanged();
 }
 
 void PianoController::evaluatePracticeNote(int midi)
 {
-    if (m_waitTickIndex < 0 || m_waitTickIndex >= m_practiceTicks.size()) return;
+    const PracticeNoteResult result = m_practice.noteOn(midi);
+    if (result.type == PracticeJudgeType::Ignored) return;
 
-    const qint64 tick = m_practiceTicks.at(m_waitTickIndex);
-    QSet<int> expected;
-    for (const auto &note : m_notes) {
-        if (note.startTick == tick) expected.insert(note.midi);
-    }
-
-    if (!expected.contains(midi)) {
-        ++m_wrongCount;
+    if (result.type == PracticeJudgeType::WrongNote) {
         setStatusMessage(QStringLiteral("错音：%1").arg(NoteUtils::midiToName(midi)));
         emit statsChanged();
         return;
     }
 
-    if (!m_matchedPracticeNotes.contains(midi)) {
-        m_matchedPracticeNotes.insert(midi);
-        ++m_correctCount;
+    if (result.statsChanged) {
         emit statsChanged();
     }
 
-    if (m_matchedPracticeNotes.size() >= expected.size()) {
+    if (result.stepComplete) {
         for (auto &note : m_notes) {
-            if (note.startTick == tick) note.played = true;
+            if (note.startTick == result.completedTick) note.played = true;
         }
-        advancePracticeTick();
+
+        if (result.songComplete) {
+            m_currentTick = m_totalTicks;
+            m_preciseTick = double(m_currentTick);
+            setPlaying(false);
+            setStatusMessage(QStringLiteral("练习完成"));
+        } else {
+            m_currentTick = result.nextTick;
+            m_preciseTick = double(m_currentTick);
+            setStatusMessage(QStringLiteral("正确，继续"));
+        }
+        emit positionChanged();
     } else {
         setStatusMessage(QStringLiteral("很好，还差当前和弦里的其他音"));
     }
@@ -488,37 +465,13 @@ void PianoController::evaluatePracticeNote(int midi)
     emit practiceChanged();
 }
 
-void PianoController::advancePracticeTick()
-{
-    m_matchedPracticeNotes.clear();
-    ++m_waitTickIndex;
-
-    if (m_waitTickIndex >= m_practiceTicks.size()) {
-        m_currentTick = m_totalTicks;
-        m_preciseTick = double(m_currentTick);
-        setPlaying(false);
-        setStatusMessage(QStringLiteral("练习完成"));
-        emit positionChanged();
-        return;
-    }
-
-    m_currentTick = m_practiceTicks.at(m_waitTickIndex);
-    m_preciseTick = double(m_currentTick);
-    setStatusMessage(QStringLiteral("正确，继续"));
-    emit positionChanged();
-}
-
 void PianoController::resetPracticeState(bool resetStats, bool resetPlayed)
 {
-    m_matchedPracticeNotes.clear();
-    m_waitTickIndex = 0;
+    m_practice.reset(resetStats);
     if (resetPlayed) {
         for (auto &note : m_notes) note.played = false;
     }
     if (resetStats) {
-        m_correctCount = 0;
-        m_wrongCount = 0;
-        m_missedCount = 0;
         emit statsChanged();
     }
 }

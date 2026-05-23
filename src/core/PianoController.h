@@ -2,6 +2,7 @@
 
 #include "audio/MidiSynth.h"
 #include "core/Song.h"
+#include "practice/PracticeEngine.h"
 
 #include <QObject>
 #include <QSet>
@@ -43,9 +44,9 @@ public:
     QVariantList notes() const;
     QVariantList activeNotes() const;
     QVariantList expectedNotes() const;
-    int correctCount() const { return m_correctCount; }
-    int wrongCount() const { return m_wrongCount; }
-    int missedCount() const { return m_missedCount; }
+    int correctCount() const { return m_practice.correctCount(); }
+    int wrongCount() const { return m_practice.wrongCount(); }
+    int missedCount() const { return m_practice.missedCount(); }
     QString statusMessage() const { return m_statusMessage; }
     QString audioStatus() const { return m_synth.statusText(); }
     int volume() const { return m_synth.volume(); }
@@ -97,10 +98,8 @@ private:
     void setSong(Song song);
     void loadJsonSheet(const QString &path);
     void loadMidiFile(const QString &path);
-    void rebuildPracticeTicks();
     void preparePracticeAtCurrentPosition();
     void evaluatePracticeNote(int midi);
-    void advancePracticeTick();
     void resetPracticeState(bool resetStats, bool resetPlayed = true);
     void refreshActiveNotes();
     void setPlaying(bool playing);
@@ -118,7 +117,6 @@ private:
     int m_ppq = DefaultPpq;
     QVector<TempoEvent> m_tempos;
     QVector<NoteEvent> m_notes;
-    QVector<qint64> m_practiceTicks;
 
     qint64 m_currentTick = 0;
     double m_preciseTick = 0.0;
@@ -135,11 +133,7 @@ private:
     QSet<int> m_activeNotes;
     MidiSynth m_synth;
 
-    int m_waitTickIndex = 0;
-    QSet<int> m_matchedPracticeNotes;
-    int m_correctCount = 0;
-    int m_wrongCount = 0;
-    int m_missedCount = 0;
+    PracticeEngine m_practice;
 
     QString m_statusMessage;
     qint64 m_positionNotifyAccumulatorMs = 0;

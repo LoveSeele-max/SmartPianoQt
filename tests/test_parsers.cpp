@@ -2,6 +2,7 @@
 #include "parser/JsonSheetParser.h"
 #include "parser/MidiFileParser.h"
 #include "playback/PlaybackClock.h"
+#include "practice/PracticeEngine.h"
 
 #include <QByteArray>
 #include <QString>
@@ -117,6 +118,18 @@ QByteArray midiFile(const QVector<QByteArray> &tracks, int ppq = 480)
 QByteArray midiFile(const QByteArray &track, int ppq = 480)
 {
     return midiFile(QVector<QByteArray>{ track }, ppq);
+}
+
+NoteEvent makeNote(int midi, qint64 startTick)
+{
+    NoteEvent note;
+    note.id = midi + int(startTick);
+    note.midi = midi;
+    note.velocity = 100;
+    note.startTick = startTick;
+    note.durationTick = 240;
+    note.noteName = NoteUtils::midiToName(midi);
+    return note;
 }
 
 void testNoteUtils()
@@ -289,6 +302,70 @@ void testPlaybackClockNormalizesLateTempo()
     expect(tempos.at(0).microsecondsPerQuarter == 500000, "PlaybackClock fallback tempo should use fallback BPM");
 }
 
+void testPracticeEngineSingleNoteAndWrongNote()
+{
+    PracticeEngine practice;
+    practice.setSong({ makeNote(60, 0), makeNote(62, 480) });
+
+    expect(practice.expectedTick() == 0, "PracticeEngine should start at the first note tick");
+
+    const PracticeNoteResult wrong = practice.noteOn(61);
+    expect(wrong.type == PracticeJudgeType::WrongNote, "PracticeEngine should reject wrong notes");
+    expect(practice.wrongCount() == 1, "PracticeEngine should count wrong notes");
+    expect(practice.expectedTick() == 0, "wrong notes should not advance practice");
+
+    const PracticeNoteResult correct = practice.noteOn(60);
+    expect(correct.type == PracticeJudgeType::Correct, "PracticeEngine should accept expected notes");
+    expect(correct.countedCorrect, "first correct note should increment correct count");
+    expect(correct.stepComplete, "single-note step should complete immediately");
+    expect(correct.nextTick == 480, "single-note completion should advance to the next step");
+    expect(practice.correctCount() == 1, "PracticeEngine should count correct notes");
+}
+
+void testPracticeEngineChordRequiresAllNotes()
+{
+    PracticeEngine practice;
+    practice.setSong({ makeNote(64, 0), makeNote(67, 0), makeNote(69, 480) });
+
+    const PracticeNoteResult first = practice.noteOn(64);
+    expect(first.type == PracticeJudgeType::Correct, "PracticeEngine should accept a chord member");
+    expect(first.countedCorrect, "first chord member should count once");
+    expect(!first.stepComplete, "partial chord should not complete the step");
+    expect(practice.expectedTick() == 0, "partial chord should keep the same expected tick");
+
+    const PracticeNoteResult repeat = practice.noteOn(64);
+    expect(!repeat.countedCorrect, "repeating an already matched chord note should not count again");
+    expect(practice.correctCount() == 1, "repeated chord notes should not inflate correct count");
+
+    const PracticeNoteResult second = practice.noteOn(67);
+    expect(second.stepComplete, "all chord notes should complete the step");
+    expect(second.nextTick == 480, "completed chord should advance to the next note tick");
+    expect(practice.correctCount() == 2, "each unique expected chord note should count once");
+}
+
+void testPracticeEngineSeekAndReset()
+{
+    PracticeEngine practice;
+    practice.setSong({ makeNote(60, 0), makeNote(62, 480), makeNote(64, 960) });
+    practice.noteOn(60);
+    practice.noteOn(61);
+
+    expect(practice.correctCount() == 1, "precondition: practice should have one correct note");
+    expect(practice.wrongCount() == 1, "precondition: practice should have one wrong note");
+
+    expect(practice.seek(500), "PracticeEngine should seek inside a non-empty song");
+    expect(practice.expectedTick() == 960, "seek should pick the first practice tick at or after the target");
+
+    practice.reset(false);
+    expect(practice.expectedTick() == 0, "reset without stats should return to the first step");
+    expect(practice.correctCount() == 1, "reset without stats should preserve correct count");
+    expect(practice.wrongCount() == 1, "reset without stats should preserve wrong count");
+
+    practice.reset(true);
+    expect(practice.correctCount() == 0, "reset with stats should clear correct count");
+    expect(practice.wrongCount() == 0, "reset with stats should clear wrong count");
+}
+
 }
 
 int main()
@@ -306,6 +383,9 @@ int main()
     testPlaybackClockSingleTempo();
     testPlaybackClockCrossesTempoChange();
     testPlaybackClockNormalizesLateTempo();
+    testPracticeEngineSingleNoteAndWrongNote();
+    testPracticeEngineChordRequiresAllNotes();
+    testPracticeEngineSeekAndReset();
 
     if (failures == 0) {
         std::cout << "All core tests passed.\n";
