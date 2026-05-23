@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QMediaDevices>
+#include <QStringList>
 #include <QtEndian>
 #include <QtMath>
 
@@ -530,6 +531,50 @@ bool MidiSynth::openInternalPiano()
 
 QString MidiSynth::resolveSoundFontPath() const
 {
+    auto pickFromDir = [](const QString &dirPath) -> QString {
+        QDir dir(dirPath);
+        const QFileInfoList files = dir.entryInfoList(
+            { QStringLiteral("*.sf3"), QStringLiteral("*.sf2") },
+            QDir::Files | QDir::Readable,
+            QDir::Name | QDir::IgnoreCase);
+        if (files.isEmpty()) return {};
+
+        for (const QFileInfo &file : files) {
+            const QString lower = file.fileName().toLower();
+            if (lower.contains(QStringLiteral("piano")) ||
+                lower.contains(QStringLiteral("grand")) ||
+                lower.contains(QStringLiteral("keys"))) {
+                return file.absoluteFilePath();
+            }
+        }
+        return files.first().absoluteFilePath();
+    };
+
+    auto pickFromPath = [&pickFromDir](const QString &path) -> QString {
+        if (path.trimmed().isEmpty()) return {};
+        const QFileInfo info(path);
+        if (!info.exists()) return {};
+
+        if (info.isDir()) {
+            return pickFromDir(info.absoluteFilePath());
+        }
+
+        const QString suffix = info.suffix().toLower();
+        if ((suffix == QStringLiteral("sf2") || suffix == QStringLiteral("sf3")) && info.isReadable()) {
+            return info.absoluteFilePath();
+        }
+        return {};
+    };
+
+    const QStringList environmentPaths = {
+        qEnvironmentVariable("SMARTPIANO_SOUNDFONT"),
+        qEnvironmentVariable("SOUNDFONT_PATH")
+    };
+    for (const QString &path : environmentPaths) {
+        const QString resolved = pickFromPath(path);
+        if (!resolved.isEmpty()) return resolved;
+    }
+
     auto findDir = [](QDir dir) -> QString {
         for (int i = 0; i < 6; ++i) {
             const QString candidate = dir.absoluteFilePath(QStringLiteral("soundfonts"));
@@ -549,22 +594,7 @@ QString MidiSynth::resolveSoundFontPath() const
         dirPath = dir.absoluteFilePath(QStringLiteral("soundfonts"));
     }
 
-    QDir dir(dirPath);
-    const QFileInfoList files = dir.entryInfoList(
-        { QStringLiteral("*.sf3"), QStringLiteral("*.sf2") },
-        QDir::Files | QDir::Readable,
-        QDir::Name | QDir::IgnoreCase);
-    if (files.isEmpty()) return {};
-
-    for (const QFileInfo &file : files) {
-        const QString lower = file.fileName().toLower();
-        if (lower.contains(QStringLiteral("piano")) ||
-            lower.contains(QStringLiteral("grand")) ||
-            lower.contains(QStringLiteral("keys"))) {
-            return file.absoluteFilePath();
-        }
-    }
-    return files.first().absoluteFilePath();
+    return pickFromDir(dirPath);
 }
 
 QString MidiSynth::resolveFluidSynthLibraryPath() const

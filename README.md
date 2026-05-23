@@ -100,13 +100,25 @@ $env:QT_PREFIX = "D:\Qt\6.11.1\mingw_64"
 
 如果没有检测到 FluidSynth 或 SoundFont，应用会自动退回内置柔和钢琴合成器。
 
-本机已支持默认识别这个路径：
+`run.ps1` 会在启动时自动连接 SoundFont：如果 [soundfonts](soundfonts) 里还没有 `.sf2/.sf3`，会优先从 `SMARTPIANO_SOUNDFONT`、`SOUNDFONT_PATH` 或下面这个本机目录寻找音色文件，并把它链接到项目的 `soundfonts/` 目录：
+
+```text
+E:\UprightPianoKW-SF2-20220221
+```
+
+如果 SoundFont 在别的位置，可以设置：
+
+```powershell
+$env:SMARTPIANO_SOUNDFONT = "D:\path\to\piano.sf2"
+```
+
+FluidSynth 本机运行库也已支持默认识别这个路径：
 
 ```text
 E:\fluidsynth-v2.5.4-win10-x64-cpp11
 ```
 
-如果安装在别的位置，可以设置：
+如果 FluidSynth 安装在别的位置，可以设置：
 
 ```powershell
 $env:FLUIDSYNTH_PREFIX = "E:\fluidsynth-v2.5.4-win10-x64-cpp11"
