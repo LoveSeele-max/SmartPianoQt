@@ -5,13 +5,13 @@ SmartPianoQt 是 Smart Piano 的 Qt 6 桌面版初版。当前目标不是一次
 ## 当前能力
 
 - Qt Quick/QML 界面，包含控制面板、卷帘窗和 61 键虚拟键盘。
-- C++ 播放状态机，支持播放、暂停、停止、拖动进度、BPM 调整和音量调节。
+- C++ 播放状态机，支持播放、暂停、停止、拖动进度、播放速度和音量调节。
 - 通过 Qt Multimedia 内置柔和钢琴合成器播放，比系统 General MIDI 更稳定。
 - 如果 `soundfonts/` 中存在 `.sf2/.sf3` 且本机可加载 FluidSynth DLL，会优先使用真实采样钢琴音色。
 - 练习模式会停在当前音符或和弦，弹对后继续。
 - 支持导入 JSON 和标准 MIDI 文件。
 - MIDI 解析支持 tempo map 保留、延音踏板、缺失 NoteOff 兜底，并有基础 parser 测试覆盖。
-- 自动播放会按 MIDI tempo map 推进，变速 MIDI 可按曲谱速度变化播放。
+- 自动播放会按 MIDI tempo map 推进，变速 MIDI 可按曲谱速度变化播放，并支持 50% 到 150% 整体变速练习。
 - 支持本地 MIDI 曲谱库：把 `.mid/.midi` 文件放进 `midi_library/` 后刷新即可加载。
 - 内置《小星星》示例曲。
 
@@ -46,7 +46,7 @@ cmake --build build --parallel 4
 ctest --test-dir build --output-on-failure
 ```
 
-当前测试覆盖 NoteUtils、JSON parser、MIDI tempo map、sustain pedal、缺失 NoteOff 兜底、异常 VLQ 和 tempo map 播放推进。
+当前测试覆盖 NoteUtils、JSON parser、MIDI tempo map、sustain pedal、缺失 NoteOff 兜底、异常 VLQ、tempo map 播放推进和 PracticeEngine 核心判定。
 
 ## 运行
 
@@ -135,5 +135,4 @@ $env:FLUIDSYNTH_PREFIX = "E:\fluidsynth-v2.5.4-win10-x64-cpp11"
 - 打包 FluidSynth 运行库和推荐的开源钢琴 SoundFont。
 - 增加 SQLite 曲谱库和练习记录。
 - 增加 MusicXML / MXL 解析。
-- 为 PracticeEngine / seek / 练习判定补单元测试。
-- 拆出 PlaybackEngine / PracticeEngine，让 `PianoController` 更专注于 QML facade。
+- 拆出 PlaybackEngine，让 `PianoController` 更专注于 QML facade。

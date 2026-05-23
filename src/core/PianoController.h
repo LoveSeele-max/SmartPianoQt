@@ -15,7 +15,8 @@
 class PianoController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString songTitle READ songTitle NOTIFY songChanged)
-    Q_PROPERTY(int bpm READ bpm WRITE setBpm NOTIFY bpmChanged)
+    Q_PROPERTY(int bpm READ bpm NOTIFY bpmChanged)
+    Q_PROPERTY(int playbackSpeed READ playbackSpeed WRITE setPlaybackSpeed NOTIFY playbackSpeedChanged)
     Q_PROPERTY(double currentBeat READ currentBeat NOTIFY positionChanged)
     Q_PROPERTY(double totalBeats READ totalBeats NOTIFY songChanged)
     Q_PROPERTY(bool playing READ isPlaying NOTIFY playbackStateChanged)
@@ -37,6 +38,7 @@ public:
 
     QString songTitle() const { return m_songTitle; }
     int bpm() const { return m_bpm; }
+    int playbackSpeed() const { return m_playbackSpeed; }
     double currentBeat() const;
     double totalBeats() const;
     bool isPlaying() const { return m_playing; }
@@ -59,7 +61,7 @@ public:
     int ppq() const { return m_ppq; }
 
 public slots:
-    void setBpm(int bpm);
+    void setPlaybackSpeed(int speed);
     void setMode(const QString &mode);
     void setVolume(int volume);
 
@@ -78,6 +80,7 @@ signals:
     void songChanged();
     void frameChanged();
     void bpmChanged();
+    void playbackSpeedChanged();
     void positionChanged();
     void playbackStateChanged();
     void modeChanged();
@@ -114,6 +117,9 @@ private:
 
     QString m_songTitle;
     int m_bpm = 100;
+    int m_playbackSpeed = 100;
+    double m_playbackRate = 1.0;
+    double m_playbackMsRemainder = 0.0;
     int m_ppq = DefaultPpq;
     QVector<TempoEvent> m_tempos;
     QVector<NoteEvent> m_notes;

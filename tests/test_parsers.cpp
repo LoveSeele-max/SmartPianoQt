@@ -302,6 +302,18 @@ void testPlaybackClockNormalizesLateTempo()
     expect(tempos.at(0).microsecondsPerQuarter == 500000, "PlaybackClock fallback tempo should use fallback BPM");
 }
 
+void testPlaybackClockCoalescesSameTickTempos()
+{
+    const QVector<TempoEvent> tempos = PlaybackClock::normalizedTempoMap(
+        { { 0, 500000 }, { 0, 1000000 }, { 480, 400000 }, { 480, 750000 } }, 120);
+    expect(tempos.size() == 2, "PlaybackClock should coalesce duplicate tempo ticks");
+    expect(tempos.at(0).microsecondsPerQuarter == 1000000, "last tempo at tick zero should win");
+    expect(tempos.at(1).microsecondsPerQuarter == 750000, "last tempo at a duplicate later tick should win");
+
+    const double advanced = PlaybackClock::advance(0.0, 1000, tempos, 480);
+    expect(qRound64(advanced) == 480, "PlaybackClock should use the coalesced starting tempo");
+}
+
 void testPracticeEngineSingleNoteAndWrongNote()
 {
     PracticeEngine practice;
@@ -383,6 +395,7 @@ int main()
     testPlaybackClockSingleTempo();
     testPlaybackClockCrossesTempoChange();
     testPlaybackClockNormalizesLateTempo();
+    testPlaybackClockCoalescesSameTickTempos();
     testPracticeEngineSingleNoteAndWrongNote();
     testPracticeEngineChordRequiresAllNotes();
     testPracticeEngineSeekAndReset();

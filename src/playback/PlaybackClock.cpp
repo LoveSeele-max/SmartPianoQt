@@ -1,6 +1,7 @@
 #include "playback/PlaybackClock.h"
 
 #include <algorithm>
+#include <iterator>
 
 namespace {
 
@@ -24,12 +25,12 @@ int safeMicros(int microsecondsPerQuarter)
 
 int tempoIndexForTick(const QVector<TempoEvent> &tempos, double tick)
 {
-    int index = 0;
-    for (int i = 1; i < tempos.size(); ++i) {
-        if (double(tempos.at(i).tick) > tick) break;
-        index = i;
-    }
-    return index;
+    const auto firstAfterTick = std::upper_bound(
+        tempos.begin(), tempos.end(), tick,
+        [](double tickValue, const TempoEvent &tempo) {
+            return tickValue < double(tempo.tick);
+        });
+    return std::max(0, int(std::distance(tempos.begin(), firstAfterTick)) - 1);
 }
 
 }
@@ -52,6 +53,17 @@ QVector<TempoEvent> PlaybackClock::normalizedTempoMap(QVector<TempoEvent> tempos
     std::stable_sort(normalized.begin(), normalized.end(), [](const TempoEvent &a, const TempoEvent &b) {
         return a.tick < b.tick;
     });
+
+    QVector<TempoEvent> coalesced;
+    coalesced.reserve(normalized.size());
+    for (const TempoEvent &tempo : normalized) {
+        if (!coalesced.isEmpty() && coalesced.last().tick == tempo.tick) {
+            coalesced.last() = tempo;
+        } else {
+            coalesced.push_back(tempo);
+        }
+    }
+    normalized = coalesced;
 
     if (normalized.isEmpty()) {
         normalized = tempoMapFromBpm(fallbackBpm);

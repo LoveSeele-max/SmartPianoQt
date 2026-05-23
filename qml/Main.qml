@@ -219,13 +219,13 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label {
-                                text: "BPM"
+                                text: "Speed"
                                 color: "#a1a1aa"
                                 font.pixelSize: 12
                                 Layout.fillWidth: true
                             }
                             Label {
-                                text: piano.bpm
+                                text: piano.playbackSpeed + "%"
                                 color: "#f4f4f5"
                                 font.pixelSize: 14
                                 font.bold: true
@@ -234,11 +234,18 @@ ApplicationWindow {
 
                         Slider {
                             Layout.fillWidth: true
-                            from: 40
-                            to: 220
+                            from: 50
+                            to: 150
                             stepSize: 1
-                            value: piano.bpm
-                            onMoved: piano.bpm = Math.round(value)
+                            value: piano.playbackSpeed
+                            onMoved: piano.playbackSpeed = Math.round(value)
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: "Tempo " + piano.bpm + " BPM"
+                            color: "#71717a"
+                            font.pixelSize: 11
                         }
                     }
 
