@@ -2,6 +2,7 @@
 #include "parser/JsonSheetParser.h"
 #include "parser/MidiFileParser.h"
 #include "playback/PlaybackClock.h"
+#include "playback/PlaybackEngine.h"
 #include "practice/PracticeEngine.h"
 
 #include <QByteArray>
@@ -314,6 +315,62 @@ void testPlaybackClockCoalescesSameTickTempos()
     expect(qRound64(advanced) == 480, "PlaybackClock should use the coalesced starting tempo");
 }
 
+Song makePlaybackSong()
+{
+    Song song;
+    song.title = QStringLiteral("Playback Test");
+    song.bpm = 120;
+    song.ppq = 480;
+    song.tempos = PlaybackClock::tempoMapFromBpm(song.bpm);
+    song.notes = { makeNote(60, 0), makeNote(62, 480), makeNote(64, 960) };
+    song.notes.last().durationTick = 480;
+    return song;
+}
+
+void testPlaybackEngineAdvanceAndSpeed()
+{
+    PlaybackEngine playback;
+    playback.setSong(makePlaybackSong());
+
+    expect(playback.bpm() == 120, "PlaybackEngine should expose the source BPM");
+    expect(playback.ppq() == 480, "PlaybackEngine should expose the source PPQ");
+    expect(playback.currentTick() == 0, "PlaybackEngine should start at tick zero");
+
+    PlaybackAdvanceResult normal = playback.advance(500);
+    expect(normal.previousTick == 0, "PlaybackEngine should report the previous tick");
+    expect(normal.currentTick == 480, "PlaybackEngine should advance at source tempo by default");
+    expect(playback.currentTick() == 480, "PlaybackEngine current tick should follow advance results");
+
+    expect(playback.setPlaybackSpeed(50), "PlaybackEngine should accept a slower playback speed");
+    PlaybackAdvanceResult slow = playback.advance(500);
+    expect(slow.currentTick == 720, "PlaybackEngine should scale elapsed time by playback speed");
+}
+
+void testPlaybackEngineSeekStopAndClamp()
+{
+    PlaybackEngine playback;
+    playback.setSong(makePlaybackSong());
+
+    playback.seekTick(999999);
+    expect(playback.currentTick() == playback.totalTicks(), "PlaybackEngine seek should clamp to song end");
+    playback.stop();
+    expect(playback.currentTick() == 0, "PlaybackEngine stop should return to the beginning");
+
+    playback.seekTick(-50);
+    expect(playback.currentTick() == 0, "PlaybackEngine seek should clamp negative positions");
+}
+
+void testPlaybackEngineEndReached()
+{
+    PlaybackEngine playback;
+    playback.setSong(makePlaybackSong());
+    playback.seekTick(playback.totalTicks() - 120);
+
+    const PlaybackAdvanceResult result = playback.advance(1000);
+    expect(result.reachedEnd, "PlaybackEngine should report reaching the end");
+    expect(result.currentTick == playback.totalTicks(), "PlaybackEngine should clamp current tick at the end");
+}
+
 void testPracticeEngineSingleNoteAndWrongNote()
 {
     PracticeEngine practice;
@@ -396,6 +453,9 @@ int main()
     testPlaybackClockCrossesTempoChange();
     testPlaybackClockNormalizesLateTempo();
     testPlaybackClockCoalescesSameTickTempos();
+    testPlaybackEngineAdvanceAndSpeed();
+    testPlaybackEngineSeekStopAndClamp();
+    testPlaybackEngineEndReached();
     testPracticeEngineSingleNoteAndWrongNote();
     testPracticeEngineChordRequiresAllNotes();
     testPracticeEngineSeekAndReset();

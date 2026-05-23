@@ -2,6 +2,7 @@
 
 #include "audio/MidiSynth.h"
 #include "core/Song.h"
+#include "playback/PlaybackEngine.h"
 #include "practice/PracticeEngine.h"
 
 #include <QObject>
@@ -37,8 +38,8 @@ public:
     explicit PianoController(QObject *parent = nullptr);
 
     QString songTitle() const { return m_songTitle; }
-    int bpm() const { return m_bpm; }
-    int playbackSpeed() const { return m_playbackSpeed; }
+    int bpm() const { return m_playbackEngine.bpm(); }
+    int playbackSpeed() const { return m_playbackEngine.playbackSpeed(); }
     double currentBeat() const;
     double totalBeats() const;
     bool isPlaying() const { return m_playing; }
@@ -55,10 +56,10 @@ public:
     QVariantList localMidiFiles() const { return m_localMidiFiles; }
     QString localMidiLibraryPath() const { return m_localMidiLibraryPath; }
     const QVector<NoteEvent> &noteEvents() const { return m_notes; }
-    qint64 currentTickValue() const { return m_currentTick; }
-    qint64 totalTickValue() const { return m_totalTicks; }
+    qint64 currentTickValue() const { return m_playbackEngine.currentTick(); }
+    qint64 totalTickValue() const { return m_playbackEngine.totalTicks(); }
     qint64 expectedTickValue() const;
-    int ppq() const { return m_ppq; }
+    int ppq() const { return m_playbackEngine.ppq(); }
 
 public slots:
     void setPlaybackSpeed(int speed);
@@ -107,7 +108,6 @@ private:
     void refreshActiveNotes();
     void setPlaying(bool playing);
     void setStatusMessage(const QString &message);
-    void clampPosition();
     void retriggerAutoNoteStarts(qint64 previousTick, qint64 currentTick);
     qint64 beatToTick(double beat) const;
     double tickToBeat(qint64 tick) const;
@@ -116,18 +116,8 @@ private:
     static constexpr int DefaultPpq = 480;
 
     QString m_songTitle;
-    int m_bpm = 100;
-    int m_playbackSpeed = 100;
-    double m_playbackRate = 1.0;
-    double m_playbackMsRemainder = 0.0;
-    int m_ppq = DefaultPpq;
-    QVector<TempoEvent> m_tempos;
+    PlaybackEngine m_playbackEngine;
     QVector<NoteEvent> m_notes;
-
-    qint64 m_currentTick = 0;
-    double m_preciseTick = 0.0;
-    qint64 m_totalTicks = DefaultPpq * 8;
-    qint64 m_maxNoteDurationTick = DefaultPpq * 2;
 
     QString m_mode = QStringLiteral("auto");
     bool m_playing = false;
