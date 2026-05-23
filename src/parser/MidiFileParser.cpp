@@ -105,6 +105,13 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
         return result;
     }
 
+    const int format = qFromBigEndian<quint16>(
+        reinterpret_cast<const uchar *>(payload.constData()));
+    if (format > 1) {
+        result.error = QStringLiteral("暂不支持 MIDI Format 2 文件");
+        return result;
+    }
+
     const int trackCount = qFromBigEndian<quint16>(
         reinterpret_cast<const uchar *>(payload.constData() + 2));
     const int division = qFromBigEndian<quint16>(
@@ -175,6 +182,10 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
                 qint64 length = 0;
                 if (!readVarLen(payload, pos, length)) {
                     result.error = QStringLiteral("MIDI 事件长度编码无效");
+                    return result;
+                }
+                if (length < 0 || pos + length > payload.size()) {
+                    result.error = QStringLiteral("MIDI SysEx 事件长度无效");
                     return result;
                 }
                 pos += int(length);
@@ -285,7 +296,7 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
         }
     }
 
-    std::sort(result.song.tempos.begin(), result.song.tempos.end(), [](const TempoEvent &a, const TempoEvent &b) {
+    std::stable_sort(result.song.tempos.begin(), result.song.tempos.end(), [](const TempoEvent &a, const TempoEvent &b) {
         return a.tick < b.tick;
     });
     if (result.song.tempos.isEmpty()) {

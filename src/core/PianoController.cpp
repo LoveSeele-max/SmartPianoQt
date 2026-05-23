@@ -4,6 +4,7 @@
 #include "library/MidiLibraryService.h"
 #include "parser/JsonSheetParser.h"
 #include "parser/MidiFileParser.h"
+#include "playback/PlaybackClock.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -18,23 +19,6 @@ namespace {
 qint64 beatsToTicks(double beats, int ppq)
 {
     return qRound64(beats * double(ppq));
-}
-
-QVector<TempoEvent> tempoMapFromBpm(int bpm)
-{
-    const int clamped = qBound(20, bpm, 260);
-    return { { 0, qRound(60000000.0 / double(clamped)) } };
-}
-
-QVector<TempoEvent> normalizedTempoMap(QVector<TempoEvent> tempos, int bpm)
-{
-    std::sort(tempos.begin(), tempos.end(), [](const TempoEvent &a, const TempoEvent &b) {
-        return a.tick < b.tick;
-    });
-    if (tempos.isEmpty()) {
-        return tempoMapFromBpm(bpm);
-    }
-    return tempos;
 }
 
 }
@@ -112,6 +96,7 @@ void PianoController::setBpm(int bpm)
     const int clamped = qBound(20, bpm, 260);
     if (m_bpm == clamped) return;
     m_bpm = clamped;
+    m_tempos = PlaybackClock::tempoMapFromBpm(m_bpm);
     emit bpmChanged();
 }
 
@@ -231,7 +216,7 @@ void PianoController::loadDemoSong()
     song.title = QStringLiteral("小星星 Demo");
     song.bpm = 100;
     song.ppq = DefaultPpq;
-    song.tempos = tempoMapFromBpm(song.bpm);
+    song.tempos = PlaybackClock::tempoMapFromBpm(song.bpm);
 
     int id = 1;
 
@@ -324,9 +309,8 @@ void PianoController::onFrame()
     const qint64 previousTick = m_currentTick;
 
     if (m_mode == QStringLiteral("auto")) {
-        const double deltaTicks =
-            double(elapsedMs) * double(m_bpm) * double(m_ppq) / 60000.0;
-        m_preciseTick = qBound(0.0, m_preciseTick + deltaTicks, double(m_totalTicks));
+        m_preciseTick = PlaybackClock::advance(m_preciseTick, elapsedMs, m_tempos, m_ppq);
+        m_preciseTick = qBound(0.0, m_preciseTick, double(m_totalTicks));
         m_currentTick = qBound<qint64>(0, qRound64(m_preciseTick), m_totalTicks);
         if (m_currentTick >= m_totalTicks) {
             m_currentTick = m_totalTicks;
@@ -379,7 +363,7 @@ void PianoController::setSong(Song song)
     m_songTitle = song.title;
     m_bpm = qBound(20, song.bpm, 260);
     m_ppq = song.ppq > 0 ? song.ppq : DefaultPpq;
-    m_tempos = normalizedTempoMap(std::move(song.tempos), m_bpm);
+    m_tempos = PlaybackClock::normalizedTempoMap(std::move(song.tempos), m_bpm);
     m_notes = std::move(song.notes);
     m_currentTick = 0;
     m_preciseTick = 0.0;
@@ -403,14 +387,14 @@ void PianoController::setSong(Song song)
 
 void PianoController::loadJsonSheet(const QString &path)
 {
-    const ParsedJsonSheet parsed = JsonSheetParser::parseFile(path);
+    ParsedJsonSheet parsed = JsonSheetParser::parseFile(path);
     if (!parsed.ok) {
         setStatusMessage(parsed.error);
         return;
     }
 
     const QString title = parsed.song.title;
-    setSong(parsed.song);
+    setSong(std::move(parsed.song));
     setStatusMessage(QStringLiteral("已导入 JSON：%1").arg(title));
 }
 

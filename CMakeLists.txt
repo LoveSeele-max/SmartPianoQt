@@ -24,6 +24,8 @@ qt_add_executable(SmartPianoQt
     src/library/MidiLibraryService.h
     src/parser/JsonSheetParser.cpp
     src/parser/JsonSheetParser.h
+    src/playback/PlaybackClock.cpp
+    src/playback/PlaybackClock.h
     src/ui/PianoRollItem.cpp
     src/ui/PianoRollItem.h
     src/parser/MidiFileParser.cpp
@@ -60,6 +62,8 @@ if(BUILD_TESTING)
         src/parser/JsonSheetParser.h
         src/parser/MidiFileParser.cpp
         src/parser/MidiFileParser.h
+        src/playback/PlaybackClock.cpp
+        src/playback/PlaybackClock.h
     )
 
     target_include_directories(SmartPianoQtTests PRIVATE
@@ -72,13 +76,13 @@ if(BUILD_TESTING)
 
     if(WIN32)
         add_test(
-            NAME SmartPianoQtParserTests
+            NAME SmartPianoQtCoreTests
             COMMAND ${CMAKE_COMMAND} -E env
                 "PATH=$<TARGET_FILE_DIR:Qt6::Core>$<SEMICOLON>$ENV{PATH}"
                 $<TARGET_FILE:SmartPianoQtTests>
         )
     else()
-        add_test(NAME SmartPianoQtParserTests COMMAND SmartPianoQtTests)
+        add_test(NAME SmartPianoQtCoreTests COMMAND SmartPianoQtTests)
     endif()
 endif()
 

@@ -1,10 +1,12 @@
 #include "core/NoteUtils.h"
 #include "parser/JsonSheetParser.h"
 #include "parser/MidiFileParser.h"
+#include "playback/PlaybackClock.h"
 
 #include <QByteArray>
 #include <QString>
 #include <QVector>
+#include <QtMath>
 #include <iostream>
 
 namespace {
@@ -93,10 +95,10 @@ void appendEnd(QByteArray &track, int delta)
     appendEvent(track, delta, { 0xFF, 0x2F, 0x00 });
 }
 
-QByteArray midiFile(const QVector<QByteArray> &tracks, int ppq = 480)
+QByteArray midiFileWithFormat(const QVector<QByteArray> &tracks, int format, int ppq = 480)
 {
     QByteArray header;
-    header += be16(tracks.size() > 1 ? 1 : 0);
+    header += be16(format);
     header += be16(tracks.size());
     header += be16(ppq);
 
@@ -105,6 +107,11 @@ QByteArray midiFile(const QVector<QByteArray> &tracks, int ppq = 480)
         file += chunk("MTrk", track);
     }
     return file;
+}
+
+QByteArray midiFile(const QVector<QByteArray> &tracks, int ppq = 480)
+{
+    return midiFileWithFormat(tracks, tracks.size() > 1 ? 1 : 0, ppq);
 }
 
 QByteArray midiFile(const QByteArray &track, int ppq = 480)
@@ -238,6 +245,50 @@ void testMidiRejectsMalformedVlq()
     expect(parsed.error.contains(QStringLiteral("长度编码")), "malformed VLQ should report a length encoding error");
 }
 
+void testMidiRejectsFormat2()
+{
+    QByteArray track;
+    appendEvent(track, 0, { 0x90, 60, 100 });
+    appendEvent(track, 120, { 0x80, 60, 0 });
+    appendEnd(track, 0);
+
+    const ParsedMidi parsed = MidiFileParser::parse(
+        midiFileWithFormat(QVector<QByteArray>{ track }, 2));
+    expect(!parsed.ok, "MIDI parser should reject format 2 files");
+    expect(parsed.error.contains(QStringLiteral("Format 2")), "format 2 rejection should explain the unsupported format");
+}
+
+void testMidiRejectsInvalidSysexLength()
+{
+    const QByteArray track = raw({ 0x00, 0xF0, 0x05, 0x01 });
+    const ParsedMidi parsed = MidiFileParser::parse(midiFile(track));
+    expect(!parsed.ok, "MIDI parser should reject SysEx events that overrun the track");
+    expect(parsed.error.contains(QStringLiteral("SysEx")), "invalid SysEx length should report a SysEx error");
+}
+
+void testPlaybackClockSingleTempo()
+{
+    const QVector<TempoEvent> tempos = PlaybackClock::tempoMapFromBpm(120);
+    const double advanced = PlaybackClock::advance(0.0, 500, tempos, 480);
+    expect(qRound64(advanced) == 480, "PlaybackClock should advance one beat in 500 ms at 120 BPM");
+}
+
+void testPlaybackClockCrossesTempoChange()
+{
+    const QVector<TempoEvent> tempos = PlaybackClock::normalizedTempoMap(
+        { { 0, 500000 }, { 480, 1000000 } }, 120);
+    const double advanced = PlaybackClock::advance(0.0, 1000, tempos, 480);
+    expect(qRound64(advanced) == 720, "PlaybackClock should consume remaining time at the slower tempo");
+}
+
+void testPlaybackClockNormalizesLateTempo()
+{
+    const QVector<TempoEvent> tempos = PlaybackClock::normalizedTempoMap({ { 480, 400000 } }, 120);
+    expect(tempos.size() == 2, "PlaybackClock should prepend a fallback tempo before a late first tempo");
+    expect(tempos.at(0).tick == 0, "PlaybackClock fallback tempo should start at tick 0");
+    expect(tempos.at(0).microsecondsPerQuarter == 500000, "PlaybackClock fallback tempo should use fallback BPM");
+}
+
 }
 
 int main()
@@ -250,9 +301,14 @@ int main()
     testMidiTempoSortingAcrossTracks();
     testMidiLateTempoGetsDefaultAtZero();
     testMidiRejectsMalformedVlq();
+    testMidiRejectsFormat2();
+    testMidiRejectsInvalidSysexLength();
+    testPlaybackClockSingleTempo();
+    testPlaybackClockCrossesTempoChange();
+    testPlaybackClockNormalizesLateTempo();
 
     if (failures == 0) {
-        std::cout << "All parser tests passed.\n";
+        std::cout << "All core tests passed.\n";
     }
     return failures == 0 ? 0 : 1;
 }

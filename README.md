@@ -11,6 +11,7 @@ SmartPianoQt 是 Smart Piano 的 Qt 6 桌面版初版。当前目标不是一次
 - 练习模式会停在当前音符或和弦，弹对后继续。
 - 支持导入 JSON 和标准 MIDI 文件。
 - MIDI 解析支持 tempo map 保留、延音踏板、缺失 NoteOff 兜底，并有基础 parser 测试覆盖。
+- 自动播放会按 MIDI tempo map 推进，变速 MIDI 可按曲谱速度变化播放。
 - 支持本地 MIDI 曲谱库：把 `.mid/.midi` 文件放进 `midi_library/` 后刷新即可加载。
 - 内置《小星星》示例曲。
 
@@ -45,7 +46,7 @@ cmake --build build --parallel 4
 ctest --test-dir build --output-on-failure
 ```
 
-当前测试覆盖 NoteUtils、JSON parser、MIDI tempo map、sustain pedal、缺失 NoteOff 兜底和异常 VLQ。
+当前测试覆盖 NoteUtils、JSON parser、MIDI tempo map、sustain pedal、缺失 NoteOff 兜底、异常 VLQ 和 tempo map 播放推进。
 
 ## 运行
 
@@ -123,4 +124,4 @@ $env:FLUIDSYNTH_PREFIX = "E:\fluidsynth-v2.5.4-win10-x64-cpp11"
 - 增加 SQLite 曲谱库和练习记录。
 - 增加 MusicXML / MXL 解析。
 - 为 PracticeEngine / seek / 练习判定补单元测试。
-- 将已解析的 MIDI tempo map 接入播放时钟，支持变速 MIDI 的真实速度播放。
+- 拆出 PlaybackEngine / PracticeEngine，让 `PianoController` 更专注于 QML facade。
