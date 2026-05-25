@@ -13,6 +13,8 @@ struct ParsedJsonSheet {
 
 class JsonSheetParser {
 public:
+    static constexpr int Ppq = 480;
+
     static ParsedJsonSheet parse(const QByteArray &bytes, const QString &fallbackTitle);
     static ParsedJsonSheet parseFile(const QString &path);
 };

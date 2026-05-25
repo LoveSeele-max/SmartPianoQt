@@ -112,7 +112,7 @@ void PianoController::setMode(const QString &mode)
 
     finishPracticeSession(false);
     m_mode = normalized;
-    resetPracticeState(false);
+    resetPracticeState(false, true);
     if (isPracticeMode()) {
         preparePracticeAtCurrentPosition();
         setStatusMessage(isRhythmPracticeMode()
@@ -174,7 +174,7 @@ void PianoController::stop()
     m_pressedNotes.clear();
     m_synth.stopAll();
     m_playbackEngine.stop();
-    resetPracticeState(true);
+    resetPracticeState(true, true);
     refreshActiveNotes();
     setStatusMessage(QStringLiteral("已回到曲首"));
     emit positionChanged();
@@ -386,7 +386,7 @@ void PianoController::setSong(Song song, const QString &sourcePath, const QStrin
     m_notes = std::move(song.notes);
 
     m_practice.setSong(m_notes);
-    resetPracticeState(true);
+    resetPracticeState(true, true);
     refreshActiveNotes();
 
     emit songChanged();

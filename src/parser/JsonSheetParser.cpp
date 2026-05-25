@@ -11,8 +11,6 @@
 
 namespace {
 
-constexpr int JsonPpq = 480;
-
 qint64 beatsToTicks(double beats, int ppq)
 {
     return qRound64(beats * double(ppq));
@@ -29,7 +27,7 @@ QVector<TempoEvent> tempoMapFromBpm(int bpm)
 ParsedJsonSheet JsonSheetParser::parse(const QByteArray &bytes, const QString &fallbackTitle)
 {
     ParsedJsonSheet result;
-    result.song.ppq = JsonPpq;
+    result.song.ppq = JsonSheetParser::Ppq;
 
     QJsonParseError parseError;
     const QJsonDocument doc = QJsonDocument::fromJson(bytes, &parseError);
@@ -71,8 +69,9 @@ ParsedJsonSheet JsonSheetParser::parse(const QByteArray &bytes, const QString &f
         note.id = id++;
         note.midi = midi;
         note.velocity = item.value(QStringLiteral("velocity")).toInt(84);
-        note.startTick = beatsToTicks(startBeat, JsonPpq);
-        note.durationTick = qMax<qint64>(JsonPpq / 8, beatsToTicks(durationBeat, JsonPpq));
+        note.startTick = beatsToTicks(startBeat, JsonSheetParser::Ppq);
+        note.durationTick = qMax<qint64>(JsonSheetParser::Ppq / 8,
+                                         beatsToTicks(durationBeat, JsonSheetParser::Ppq));
         note.fingering = item.value(QStringLiteral("fingering")).toInt(0);
         note.noteName = NoteUtils::midiToName(midi);
         result.song.notes.push_back(note);

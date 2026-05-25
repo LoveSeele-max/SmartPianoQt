@@ -111,7 +111,7 @@ private:
     void preparePracticeAtCurrentPosition();
     void evaluatePracticeNote(int midi, int velocity);
     void handleRhythmMisses(qint64 currentTick);
-    void resetPracticeState(bool resetStats, bool resetPlayed = true);
+    void resetPracticeState(bool resetStats, bool resetPlayed);
     void refreshActiveNotes();
     void setPlaying(bool playing);
     void setStatusMessage(const QString &message);
