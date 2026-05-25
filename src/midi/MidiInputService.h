@@ -48,4 +48,5 @@ private:
     QString m_statusText;
     quintptr m_nativeHandle = 0;
     int m_openPortIndex = -1;
+    QString m_openPortName;
 };

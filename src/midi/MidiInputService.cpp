@@ -19,6 +19,16 @@ constexpr int ActiveSensing = 0xFE;
 constexpr int TimingClock = 0xF8;
 
 #ifdef Q_OS_WIN
+QString winMmErrorText(MMRESULT result)
+{
+    wchar_t buffer[MAXERRORLENGTH] = {};
+    if (midiInGetErrorTextW(result, buffer, MAXERRORLENGTH) == MMSYSERR_NOERROR) {
+        const QString text = QString::fromWCharArray(buffer).trimmed();
+        if (!text.isEmpty()) return text;
+    }
+    return QStringLiteral("WinMM 错误码 %1").arg(result);
+}
+
 void CALLBACK midiInputCallback(HMIDIIN, UINT message, DWORD_PTR instance, DWORD_PTR param1, DWORD_PTR)
 {
     if (message != MIM_DATA || instance == 0) return;
@@ -56,21 +66,39 @@ MidiInputService::~MidiInputService()
 
 void MidiInputService::refreshPorts()
 {
-    m_inputPorts.clear();
-
 #ifdef Q_OS_WIN
+    const bool wasOpen = m_nativeHandle != 0;
+    const QString openPortName = m_openPortName;
+    QStringList refreshedPorts;
+
     const UINT count = midiInGetNumDevs();
     for (UINT i = 0; i < count; ++i) {
         MIDIINCAPSW caps;
         if (midiInGetDevCapsW(i, &caps, sizeof(caps)) == MMSYSERR_NOERROR) {
-            m_inputPorts.push_back(QString::fromWCharArray(caps.szPname));
+            refreshedPorts.push_back(QString::fromWCharArray(caps.szPname));
         }
     }
+
+    m_inputPorts = refreshedPorts;
     emit portsChanged();
+
+    if (wasOpen) {
+        const int refreshedIndex = m_inputPorts.indexOf(openPortName);
+        if (refreshedIndex >= 0) {
+            m_openPortIndex = refreshedIndex;
+            setStatusText(QStringLiteral("MIDI 输入：已连接 %1").arg(openPortName));
+        } else {
+            close();
+            setStatusText(QStringLiteral("MIDI 输入：已连接设备消失，连接已关闭"));
+        }
+        return;
+    }
+
     setStatusText(m_inputPorts.isEmpty()
                       ? QStringLiteral("MIDI 输入：未检测到设备")
                       : QStringLiteral("MIDI 输入：检测到 %1 个设备").arg(m_inputPorts.size()));
 #else
+    m_inputPorts.clear();
     emit portsChanged();
     setStatusText(QStringLiteral("MIDI 输入：当前平台尚未启用 MIDI 后端"));
 #endif
@@ -92,14 +120,21 @@ void MidiInputService::openPort(int index)
                                        reinterpret_cast<DWORD_PTR>(this),
                                        CALLBACK_FUNCTION);
     if (result != MMSYSERR_NOERROR || !handle) {
-        setStatusText(QStringLiteral("MIDI 输入：设备打开失败"));
+        setStatusText(QStringLiteral("MIDI 输入：设备打开失败：%1").arg(winMmErrorText(result)));
         return;
     }
 
-    midiInStart(handle);
+    const MMRESULT startResult = midiInStart(handle);
+    if (startResult != MMSYSERR_NOERROR) {
+        midiInClose(handle);
+        setStatusText(QStringLiteral("MIDI 输入：设备启动失败：%1").arg(winMmErrorText(startResult)));
+        return;
+    }
+
     m_nativeHandle = reinterpret_cast<quintptr>(handle);
     m_openPortIndex = index;
-    setStatusText(QStringLiteral("MIDI 输入：已连接 %1").arg(m_inputPorts.at(index)));
+    m_openPortName = m_inputPorts.at(index);
+    setStatusText(QStringLiteral("MIDI 输入：已连接 %1").arg(m_openPortName));
 #else
     Q_UNUSED(index)
     setStatusText(QStringLiteral("MIDI 输入：当前平台尚未启用 MIDI 后端"));
@@ -116,6 +151,7 @@ void MidiInputService::close()
         midiInClose(handle);
         m_nativeHandle = 0;
         m_openPortIndex = -1;
+        m_openPortName.clear();
     }
 #endif
     setStatusText(QStringLiteral("MIDI 输入：已关闭"));

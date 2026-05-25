@@ -81,7 +81,7 @@ Rectangle {
             property bool black: isBlackMidi(midi)
             property real whiteW: keyboard.width / whiteKeyCount
             property bool active: activeSet[midi] === true
-            property bool expected: expectedSet[midi] === true && piano.mode === "practice"
+            property bool expected: expectedSet[midi] === true && piano.mode !== "auto"
 
             z: black ? 2 : 1
             x: keyX(midi, whiteW)

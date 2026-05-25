@@ -8,7 +8,11 @@
 enum class PracticeJudgeType {
     Ignored,
     Correct,
-    WrongNote
+    RepeatedNote,
+    WrongNote,
+    Early,
+    Late,
+    Missed
 };
 
 struct PracticeNoteResult {
@@ -17,8 +21,12 @@ struct PracticeNoteResult {
     bool stepComplete = false;
     bool songComplete = false;
     bool statsChanged = false;
+    int expectedMidi = -1;
     int actualMidi = -1;
     int actualVelocity = 0;
+    qint64 expectedTick = -1;
+    qint64 actualTick = -1;
+    qint64 timingOffsetTick = 0;
     qint64 completedTick = -1;
     qint64 nextTick = -1;
 };
@@ -36,8 +44,11 @@ public:
     bool seek(qint64 tick);
 
     qint64 expectedTick() const;
+    QVector<NoteEvent> expectedNotes() const;
     bool hasExpectedNotes() const;
     PracticeNoteResult noteOn(int midi, int velocity);
+    PracticeNoteResult noteOnRhythm(int midi, int velocity, qint64 actualTick, qint64 toleranceTick);
+    QVector<PracticeNoteResult> markMissedUntil(qint64 actualTick, qint64 toleranceTick);
 
     int correctCount() const { return m_correctCount; }
     int wrongCount() const { return m_wrongCount; }

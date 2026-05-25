@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Multimedia Quick QuickControls2)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Multimedia Quick QuickControls2 Sql)
 
 qt_standard_project_setup(REQUIRES 6.5)
 qt_policy(SET QTP0004 NEW)
@@ -32,6 +32,8 @@ qt_add_executable(SmartPianoQt
     src/playback/PlaybackEngine.h
     src/practice/PracticeEngine.cpp
     src/practice/PracticeEngine.h
+    src/storage/PracticeRecordStore.cpp
+    src/storage/PracticeRecordStore.h
     src/ui/PianoRollItem.cpp
     src/ui/PianoRollItem.h
     src/parser/MidiFileParser.cpp
@@ -44,6 +46,9 @@ qt_add_qml_module(SmartPianoQt
     QML_FILES
         qml/Main.qml
         qml/components/ControlPanel.qml
+        qml/components/MidiInputPanel.qml
+        qml/components/PlaybackControls.qml
+        qml/components/PracticeStatusPanel.qml
         qml/components/LocalMidiPanel.qml
         qml/components/VirtualKeyboard.qml
 )
@@ -57,6 +62,7 @@ target_link_libraries(SmartPianoQt PRIVATE
     Qt6::Multimedia
     Qt6::Quick
     Qt6::QuickControls2
+    Qt6::Sql
 )
 
 if(WIN32)
@@ -83,6 +89,8 @@ if(BUILD_TESTING)
         src/playback/PlaybackEngine.h
         src/practice/PracticeEngine.cpp
         src/practice/PracticeEngine.h
+        src/storage/PracticeRecordStore.cpp
+        src/storage/PracticeRecordStore.h
     )
 
     target_include_directories(SmartPianoQtTests PRIVATE
@@ -91,6 +99,7 @@ if(BUILD_TESTING)
 
     target_link_libraries(SmartPianoQtTests PRIVATE
         Qt6::Core
+        Qt6::Sql
     )
 
     if(WIN32)

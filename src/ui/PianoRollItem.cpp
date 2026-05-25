@@ -74,7 +74,7 @@ void PianoRollItem::paint(QPainter *p)
     const qint64 visibleStartTick = qMax<qint64>(0, qRound64((currentBeat - 1.0) * m_controller->ppq()));
     const qint64 visibleEndTick = qRound64((currentBeat + 7.0) * m_controller->ppq());
     const qint64 expectedTick = m_controller->expectedTickValue();
-    const bool practiceMode = m_controller->mode() == QStringLiteral("practice");
+    const bool practiceMode = m_controller->mode() != QStringLiteral("auto");
 
     p->fillRect(QRectF(0, 0, w, topPad), QColor(9, 9, 11, 210));
     p->fillRect(QRectF(0, strikeY - 2, w, h - strikeY + 2), QColor(9, 9, 11, 225));

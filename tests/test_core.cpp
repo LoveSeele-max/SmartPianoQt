@@ -5,9 +5,14 @@
 #include "playback/PlaybackClock.h"
 #include "playback/PlaybackEngine.h"
 #include "practice/PracticeEngine.h"
+#include "storage/PracticeRecordStore.h"
 
 #include <QByteArray>
+#include <QCoreApplication>
+#include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QString>
+#include <QTemporaryDir>
 #include <QVector>
 #include <QtMath>
 #include <iostream>
@@ -402,6 +407,8 @@ void testPracticeEngineSingleNoteAndWrongNote()
     practice.setSong({ makeNote(60, 0), makeNote(62, 480) });
 
     expect(practice.expectedTick() == 0, "PracticeEngine should start at the first note tick");
+    expect(practice.expectedNotes().size() == 1, "PracticeEngine should expose notes for the current step");
+    expect(practice.expectedNotes().at(0).midi == 60, "PracticeEngine expected notes should preserve pitch");
 
     const PracticeNoteResult wrong = practice.noteOn(61, 96);
     expect(wrong.type == PracticeJudgeType::WrongNote, "PracticeEngine should reject wrong notes");
@@ -429,6 +436,7 @@ void testPracticeEngineChordRequiresAllNotes()
     expect(practice.expectedTick() == 0, "partial chord should keep the same expected tick");
 
     const PracticeNoteResult repeat = practice.noteOn(64, 96);
+    expect(repeat.type == PracticeJudgeType::RepeatedNote, "repeated chord notes should be reported explicitly");
     expect(!repeat.countedCorrect, "repeating an already matched chord note should not count again");
     expect(practice.correctCount() == 1, "repeated chord notes should not inflate correct count");
 
@@ -465,6 +473,28 @@ void testPracticeEngineSeekAndReset()
     expect(practice.wrongCount() == 0, "reset with stats should clear wrong count");
 }
 
+void testPracticeEngineRhythmJudging()
+{
+    PracticeEngine practice;
+    practice.setSong({ makeNote(60, 480), makeNote(62, 960) });
+
+    const PracticeNoteResult early = practice.noteOnRhythm(60, 90, 360, 60);
+    expect(early.type == PracticeJudgeType::Early, "rhythm judging should detect early input");
+    expect(early.timingOffsetTick == -120, "early result should preserve timing offset");
+    expect(practice.wrongCount() == 1, "early input should count as a wrong attempt");
+
+    const PracticeNoteResult correct = practice.noteOnRhythm(60, 90, 500, 60);
+    expect(correct.type == PracticeJudgeType::Correct, "rhythm judging should accept notes inside tolerance");
+    expect(correct.stepComplete, "single rhythm note should complete its step");
+    expect(correct.nextTick == 960, "rhythm completion should advance to the next step");
+
+    const QVector<PracticeNoteResult> missed = practice.markMissedUntil(1100, 60);
+    expect(missed.size() == 1, "rhythm mode should produce missed events for overdue notes");
+    expect(missed.at(0).type == PracticeJudgeType::Missed, "overdue notes should be marked missed");
+    expect(missed.at(0).expectedMidi == 62, "missed event should preserve expected pitch");
+    expect(practice.missedCount() == 1, "missed rhythm notes should update missed count");
+}
+
 void testMidiInputMessageFiltering()
 {
     const MidiInputMessage activeSensing = MidiInputService::decodeShortMessage(0xFE, 0, 0);
@@ -482,10 +512,79 @@ void testMidiInputMessageFiltering()
     expect(zeroVelocity.type == MidiInputMessageType::NoteOff, "MIDI input should treat note-on velocity zero as note-off");
 }
 
+void testPracticeRecordStore()
+{
+    QTemporaryDir dir;
+    expect(dir.isValid(), "temporary directory should be available for practice record store test");
+    const QString dbPath = dir.filePath(QStringLiteral("practice.sqlite"));
+
+    PracticeRecordStore store;
+    expect(store.open(dbPath), "PracticeRecordStore should open a SQLite database");
+
+    Song song = makePlaybackSong();
+    const qint64 sheetId = store.upsertSheet(song, QStringLiteral("test.mid"), QStringLiteral("midi"));
+    expect(sheetId > 0, "PracticeRecordStore should upsert sheet metadata");
+    const qint64 sameSheetId = store.upsertSheet(song, QStringLiteral("test.mid"), QStringLiteral("midi"));
+    expect(sameSheetId == sheetId, "PracticeRecordStore should reuse sheet ids for unchanged content");
+
+    PracticeSessionStart start;
+    start.mode = QStringLiteral("rhythm");
+    start.playbackSpeed = 95;
+    start.startTick = 480;
+    const qint64 sessionId = store.beginSession(sheetId, start);
+    expect(sessionId > 0, "PracticeRecordStore should begin a practice session");
+
+    PracticeEventRecord event;
+    event.result = PracticeJudgeType::Correct;
+    event.expectedMidi = 60;
+    event.actualMidi = 60;
+    event.velocity = 96;
+    event.expectedTick = 480;
+    event.actualTick = 500;
+    event.offsetMs = 21;
+    expect(store.appendEvent(sessionId, event), "PracticeRecordStore should append judge events");
+
+    PracticeSessionSummary summary;
+    summary.completed = true;
+    summary.endTick = 1440;
+    summary.correctCount = 1;
+    expect(store.finishSession(sessionId, summary), "PracticeRecordStore should finish a practice session");
+    store.close();
+
+    const QString connectionName = QStringLiteral("practice-store-readback");
+    QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+    db.setDatabaseName(dbPath);
+    expect(db.open(), "readback database connection should open");
+
+    QSqlQuery sessions(db);
+    expect(sessions.exec(QStringLiteral("SELECT mode, correct_count, score, completed FROM practice_sessions WHERE id = 1")),
+           "readback session query should run");
+    expect(sessions.next(), "readback should find the recorded session");
+    expect(sessions.value(0).toString() == QStringLiteral("rhythm"), "recorded session should keep its mode");
+    expect(sessions.value(1).toInt() == 1, "recorded session should keep final correct count");
+    expect(sessions.value(2).toInt() == 100, "recorded session should calculate score");
+    expect(sessions.value(3).toInt() == 1, "recorded session should keep completion state");
+
+    QSqlQuery events(db);
+    expect(events.exec(QStringLiteral("SELECT result, actual_midi FROM practice_events WHERE session_id = 1")),
+           "readback event query should run");
+    expect(events.next(), "readback should find the recorded event");
+    expect(events.value(0).toString() == QStringLiteral("correct"), "recorded event should store judge type text");
+    expect(events.value(1).toInt() == 60, "recorded event should keep actual pitch");
+
+    sessions.finish();
+    events.finish();
+    db.close();
+    db = QSqlDatabase();
+    QSqlDatabase::removeDatabase(connectionName);
 }
 
-int main()
+}
+
+int main(int argc, char *argv[])
 {
+    QCoreApplication app(argc, argv);
+
     testNoteUtils();
     testJsonParser();
     testJsonParserSkipsOutOfRangeMidi();
@@ -508,7 +607,9 @@ int main()
     testPracticeEngineSingleNoteAndWrongNote();
     testPracticeEngineChordRequiresAllNotes();
     testPracticeEngineSeekAndReset();
+    testPracticeEngineRhythmJudging();
     testMidiInputMessageFiltering();
+    testPracticeRecordStore();
 
     if (failures == 0) {
         std::cout << "All core tests passed.\n";

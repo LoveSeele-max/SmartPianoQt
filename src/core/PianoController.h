@@ -4,6 +4,7 @@
 #include "core/Song.h"
 #include "playback/PlaybackEngine.h"
 #include "practice/PracticeEngine.h"
+#include "storage/PracticeRecordStore.h"
 
 #include <QHash>
 #include <QObject>
@@ -37,6 +38,7 @@ class PianoController : public QObject {
 
 public:
     explicit PianoController(QObject *parent = nullptr);
+    ~PianoController() override;
 
     QString songTitle() const { return m_songTitle; }
     int bpm() const { return m_playbackEngine.bpm(); }
@@ -100,18 +102,26 @@ private slots:
 
 private:
     QVariantMap noteToVariant(const NoteEvent &note) const;
-    void setSong(Song song);
+    void setSong(Song song, const QString &sourcePath = QString(), const QString &sourceFormat = QString());
     void loadJsonSheet(const QString &path);
     void loadMidiFile(const QString &path);
     void preparePracticeAtCurrentPosition();
     void evaluatePracticeNote(int midi, int velocity);
+    void handleRhythmMisses(qint64 currentTick);
     void resetPracticeState(bool resetStats, bool resetPlayed = true);
     void refreshActiveNotes();
     void setPlaying(bool playing);
     void setStatusMessage(const QString &message);
+    bool isPracticeMode() const;
+    bool isRhythmPracticeMode() const;
+    qint64 rhythmToleranceTick() const;
+    void beginPracticeSession();
+    void appendPracticeEvent(const PracticeNoteResult &result);
+    void finishPracticeSession(bool completed);
     void retriggerAutoNoteStarts(qint64 previousTick, qint64 currentTick);
     qint64 beatToTick(double beat) const;
     double tickToBeat(qint64 tick) const;
+    int tickOffsetToMs(qint64 offsetTick) const;
     int velocityForMidi(int midi) const;
 
     static constexpr int DefaultPpq = 480;
@@ -131,6 +141,10 @@ private:
     MidiSynth m_synth;
 
     PracticeEngine m_practice;
+    PracticeRecordStore m_recordStore;
+    qint64 m_currentSheetId = -1;
+    qint64 m_practiceSessionId = -1;
+    bool m_practiceSessionActive = false;
 
     QString m_statusMessage;
     qint64 m_positionNotifyAccumulatorMs = 0;
