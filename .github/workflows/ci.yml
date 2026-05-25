@@ -6,7 +6,7 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
@@ -19,7 +19,7 @@ jobs:
           host: windows
           target: desktop
           arch: win64_msvc2019_64
-          modules: qtdeclarative qtmultimedia qtshadertools
+          archives: qtbase qtdeclarative qtmultimedia qtshadertools
           cache: true
 
       - name: Configure
