@@ -31,6 +31,7 @@ Frame {
 
             PlaybackControls {}
             PracticeStatusPanel {}
+            PracticeReportPanel {}
 
             Rectangle {
                 Layout.fillWidth: true

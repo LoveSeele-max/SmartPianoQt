@@ -35,6 +35,7 @@ class PianoController : public QObject {
     Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(QVariantList localMidiFiles READ localMidiFiles NOTIFY localMidiLibraryChanged)
     Q_PROPERTY(QString localMidiLibraryPath READ localMidiLibraryPath NOTIFY localMidiLibraryChanged)
+    Q_PROPERTY(QVariantMap practiceReport READ practiceReport NOTIFY practiceReportChanged)
 
 public:
     explicit PianoController(QObject *parent = nullptr);
@@ -58,6 +59,7 @@ public:
     int volume() const { return m_synth.volume(); }
     QVariantList localMidiFiles() const { return m_localMidiFiles; }
     QString localMidiLibraryPath() const { return m_localMidiLibraryPath; }
+    QVariantMap practiceReport() const { return m_practiceReport; }
     const QVector<NoteEvent> &noteEvents() const { return m_notes; }
     qint64 currentTickValue() const { return m_playbackEngine.currentTick(); }
     qint64 totalTickValue() const { return m_playbackEngine.totalTicks(); }
@@ -96,6 +98,7 @@ signals:
     void audioStatusChanged();
     void volumeChanged();
     void localMidiLibraryChanged();
+    void practiceReportChanged();
 
 private slots:
     void onFrame();
@@ -118,10 +121,12 @@ private:
     void beginPracticeSession();
     void appendPracticeEvent(const PracticeNoteResult &result);
     void finishPracticeSession(bool completed);
+    void refreshPracticeReport();
+    QVariantMap practiceReportToVariant(const PracticeReportSummary &report) const;
     void retriggerAutoNoteStarts(qint64 previousTick, qint64 currentTick);
     qint64 beatToTick(double beat) const;
     double tickToBeat(qint64 tick) const;
-    int tickOffsetToMs(qint64 offsetTick) const;
+    int tickOffsetToMs(qint64 expectedTick, qint64 actualTick) const;
     int velocityForMidi(int midi) const;
 
     static constexpr int DefaultPpq = 480;
@@ -145,6 +150,7 @@ private:
     qint64 m_currentSheetId = -1;
     qint64 m_practiceSessionId = -1;
     bool m_practiceSessionActive = false;
+    QVariantMap m_practiceReport;
 
     QString m_statusMessage;
     qint64 m_positionNotifyAccumulatorMs = 0;

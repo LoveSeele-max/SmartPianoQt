@@ -6,6 +6,7 @@
 #include "parser/MidiFileParser.h"
 #include "playback/PlaybackClock.h"
 
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QSet>
@@ -393,6 +394,7 @@ void PianoController::setSong(Song song, const QString &sourcePath, const QStrin
     emit notesChanged();
     emit positionChanged();
     emit practiceChanged();
+    refreshPracticeReport();
 }
 
 void PianoController::loadJsonSheet(const QString &path)
@@ -639,7 +641,7 @@ void PianoController::appendPracticeEvent(const PracticeNoteResult &result)
     event.velocity = result.actualVelocity;
     event.expectedTick = result.expectedTick;
     event.actualTick = result.actualTick >= 0 ? result.actualTick : m_playbackEngine.currentTick();
-    event.offsetMs = tickOffsetToMs(result.timingOffsetTick);
+    event.offsetMs = tickOffsetToMs(event.expectedTick, event.actualTick);
     m_recordStore.appendEvent(m_practiceSessionId, event);
 }
 
@@ -657,6 +659,60 @@ void PianoController::finishPracticeSession(bool completed)
 
     m_practiceSessionId = -1;
     m_practiceSessionActive = false;
+    refreshPracticeReport();
+}
+
+void PianoController::refreshPracticeReport()
+{
+    const QVariantMap next = practiceReportToVariant(m_recordStore.reportForSheet(m_currentSheetId));
+    if (m_practiceReport == next) return;
+    m_practiceReport = next;
+    emit practiceReportChanged();
+}
+
+QVariantMap PianoController::practiceReportToVariant(const PracticeReportSummary &report) const
+{
+    QVariantMap map;
+    map.insert(QStringLiteral("hasData"), report.sessionCount > 0);
+    map.insert(QStringLiteral("sessionCount"), report.sessionCount);
+    map.insert(QStringLiteral("averageScore"), report.averageScore);
+    map.insert(QStringLiteral("totalCorrect"), report.totalCorrect);
+    map.insert(QStringLiteral("totalWrong"), report.totalWrong);
+    map.insert(QStringLiteral("totalMissed"), report.totalMissed);
+
+    QVariantMap latest;
+    if (!report.recentSessions.isEmpty()) {
+        const PracticeSessionRecord &session = report.recentSessions.first();
+        latest.insert(QStringLiteral("id"), session.id);
+        latest.insert(QStringLiteral("mode"), session.mode);
+        latest.insert(QStringLiteral("score"), session.score);
+        latest.insert(QStringLiteral("completed"), session.completed);
+        latest.insert(QStringLiteral("correct"), session.correctCount);
+        latest.insert(QStringLiteral("wrong"), session.wrongCount);
+        latest.insert(QStringLiteral("missed"), session.missedCount);
+        latest.insert(QStringLiteral("durationSeconds"), session.durationSeconds);
+        const QDateTime started = QDateTime::fromString(session.startedAt, Qt::ISODateWithMs);
+        latest.insert(QStringLiteral("startedAt"),
+                      started.isValid() ? started.toLocalTime().toString(QStringLiteral("MM-dd HH:mm"))
+                                        : session.startedAt);
+    }
+    map.insert(QStringLiteral("latest"), latest);
+
+    QVariantList mistakes;
+    mistakes.reserve(report.mistakeStats.size());
+    for (const PracticeMistakeStat &stat : report.mistakeStats) {
+        QVariantMap item;
+        item.insert(QStringLiteral("midi"), stat.midi);
+        item.insert(QStringLiteral("note"), stat.noteName);
+        item.insert(QStringLiteral("wrong"), stat.wrongCount);
+        item.insert(QStringLiteral("missed"), stat.missedCount);
+        item.insert(QStringLiteral("early"), stat.earlyCount);
+        item.insert(QStringLiteral("late"), stat.lateCount);
+        item.insert(QStringLiteral("total"), stat.totalCount);
+        mistakes.push_back(item);
+    }
+    map.insert(QStringLiteral("mistakes"), mistakes);
+    return map;
 }
 
 void PianoController::retriggerAutoNoteStarts(qint64 previousTick, qint64 currentTick)
@@ -687,11 +743,13 @@ double PianoController::tickToBeat(qint64 tick) const
     return m_playbackEngine.tickToBeat(tick);
 }
 
-int PianoController::tickOffsetToMs(qint64 offsetTick) const
+int PianoController::tickOffsetToMs(qint64 expectedTick, qint64 actualTick) const
 {
-    if (m_playbackEngine.ppq() <= 0 || m_playbackEngine.bpm() <= 0) return 0;
-    const double msPerTick = 60000.0 / (double(m_playbackEngine.bpm()) * double(m_playbackEngine.ppq()));
-    return qRound(double(offsetTick) * msPerTick);
+    if (expectedTick < 0 || actualTick < 0 || m_playbackEngine.ppq() <= 0) return 0;
+    const double sourceMs = PlaybackClock::durationMsBetweenTicks(
+        expectedTick, actualTick, m_playbackEngine.tempos(), m_playbackEngine.ppq());
+    const double playbackRate = qMax(0.01, double(m_playbackEngine.playbackSpeed()) / 100.0);
+    return qRound(sourceMs / playbackRate);
 }
 
 int PianoController::velocityForMidi(int midi) const

@@ -48,6 +48,7 @@ qt_add_qml_module(SmartPianoQt
         qml/components/ControlPanel.qml
         qml/components/MidiInputPanel.qml
         qml/components/PlaybackControls.qml
+        qml/components/PracticeReportPanel.qml
         qml/components/PracticeStatusPanel.qml
         qml/components/LocalMidiPanel.qml
         qml/components/VirtualKeyboard.qml

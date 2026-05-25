@@ -24,6 +24,7 @@ public:
     int bpm() const { return m_bpm; }
     int ppq() const { return m_ppq; }
     int playbackSpeed() const { return m_playbackSpeed; }
+    const QVector<TempoEvent> &tempos() const { return m_tempos; }
     qint64 currentTick() const { return m_currentTick; }
     qint64 totalTicks() const { return m_totalTicks; }
     qint64 maxNoteDurationTick() const { return m_maxNoteDurationTick; }

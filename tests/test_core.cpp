@@ -345,6 +345,18 @@ void testPlaybackClockCoalescesSameTickTempos()
     expect(qRound64(advanced) == 480, "PlaybackClock should use the coalesced starting tempo");
 }
 
+void testPlaybackClockDurationMsBetweenTicks()
+{
+    const QVector<TempoEvent> tempos = PlaybackClock::normalizedTempoMap(
+        { { 0, 500000 }, { 480, 1000000 } }, 120);
+
+    const double forwardMs = PlaybackClock::durationMsBetweenTicks(0, 960, tempos, 480);
+    expect(qRound64(forwardMs) == 1500, "PlaybackClock should convert tick ranges through tempo changes");
+
+    const double backwardMs = PlaybackClock::durationMsBetweenTicks(960, 480, tempos, 480);
+    expect(qRound64(backwardMs) == -1000, "PlaybackClock should preserve sign for early timing offsets");
+}
+
 Song makePlaybackSong()
 {
     Song song;
@@ -544,11 +556,37 @@ void testPracticeRecordStore()
     event.offsetMs = 21;
     expect(store.appendEvent(sessionId, event), "PracticeRecordStore should append judge events");
 
+    PracticeEventRecord wrongEvent;
+    wrongEvent.result = PracticeJudgeType::WrongNote;
+    wrongEvent.expectedMidi = 62;
+    wrongEvent.actualMidi = 61;
+    wrongEvent.velocity = 80;
+    wrongEvent.expectedTick = 960;
+    wrongEvent.actualTick = 940;
+    wrongEvent.offsetMs = -20;
+    expect(store.appendEvent(sessionId, wrongEvent), "PracticeRecordStore should append mistake events");
+
     PracticeSessionSummary summary;
     summary.completed = true;
     summary.endTick = 1440;
     summary.correctCount = 1;
+    summary.wrongCount = 1;
     expect(store.finishSession(sessionId, summary), "PracticeRecordStore should finish a practice session");
+
+    const QVector<PracticeSessionRecord> recent = store.recentSessions(3, sheetId);
+    expect(recent.size() == 1, "PracticeRecordStore should query recent sessions for a sheet");
+    expect(recent.at(0).sheetId == sheetId, "recent session should preserve sheet id");
+    expect(recent.at(0).score == 50, "recent session should expose calculated score");
+
+    const QVector<PracticeMistakeStat> mistakes = store.mistakeStatsForSheet(sheetId, 3);
+    expect(mistakes.size() == 1, "PracticeRecordStore should query mistake stats for a sheet");
+    expect(mistakes.at(0).midi == 62, "mistake stats should group by expected pitch");
+    expect(mistakes.at(0).wrongCount == 1, "mistake stats should count wrong notes");
+
+    const PracticeReportSummary report = store.reportForSheet(sheetId, 3, 3);
+    expect(report.sessionCount == 1, "PracticeRecordStore report should count sessions");
+    expect(report.averageScore == 50, "PracticeRecordStore report should average scores");
+    expect(report.totalWrong == 1, "PracticeRecordStore report should aggregate wrong notes");
     store.close();
 
     const QString connectionName = QStringLiteral("practice-store-readback");
@@ -562,7 +600,7 @@ void testPracticeRecordStore()
     expect(sessions.next(), "readback should find the recorded session");
     expect(sessions.value(0).toString() == QStringLiteral("rhythm"), "recorded session should keep its mode");
     expect(sessions.value(1).toInt() == 1, "recorded session should keep final correct count");
-    expect(sessions.value(2).toInt() == 100, "recorded session should calculate score");
+    expect(sessions.value(2).toInt() == 50, "recorded session should calculate score");
     expect(sessions.value(3).toInt() == 1, "recorded session should keep completion state");
 
     QSqlQuery events(db);
@@ -601,6 +639,7 @@ int main(int argc, char *argv[])
     testPlaybackClockCrossesTempoChange();
     testPlaybackClockNormalizesLateTempo();
     testPlaybackClockCoalescesSameTickTempos();
+    testPlaybackClockDurationMsBetweenTicks();
     testPlaybackEngineAdvanceAndSpeed();
     testPlaybackEngineSeekStopAndClamp();
     testPlaybackEngineEndReached();

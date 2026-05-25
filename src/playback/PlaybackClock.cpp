@@ -118,3 +118,45 @@ double PlaybackClock::advance(double currentTick, qint64 elapsedMs, const QVecto
 
     return tick;
 }
+
+double PlaybackClock::durationMsBetweenTicks(qint64 fromTick, qint64 toTick, const QVector<TempoEvent> &tempos, int ppq)
+{
+    if (fromTick == toTick || ppq <= 0) return 0.0;
+
+    const bool negative = toTick < fromTick;
+    qint64 startTick = negative ? toTick : fromTick;
+    const qint64 endTick = negative ? fromTick : toTick;
+    startTick = std::max<qint64>(0, startTick);
+
+    QVector<TempoEvent> fallback;
+    const QVector<TempoEvent> *tempoMap = &tempos;
+    if (tempoMap->isEmpty()) {
+        fallback = tempoMapFromBpm(DefaultBpm);
+        tempoMap = &fallback;
+    }
+
+    double elapsedMs = 0.0;
+    double tick = double(startTick);
+    int tempoIndex = tempoIndexForTick(*tempoMap, tick);
+
+    while (tick < double(endTick)) {
+        const int microsPerQuarter = safeMicros(tempoMap->at(tempoIndex).microsecondsPerQuarter);
+        const double msPerTick = double(microsPerQuarter) / (1000.0 * double(ppq));
+        const double segmentEnd = tempoIndex + 1 < tempoMap->size()
+            ? std::min<double>(double(endTick), double(tempoMap->at(tempoIndex + 1).tick))
+            : double(endTick);
+
+        if (segmentEnd <= tick) {
+            ++tempoIndex;
+            continue;
+        }
+
+        elapsedMs += (segmentEnd - tick) * msPerTick;
+        tick = segmentEnd;
+        if (tempoIndex + 1 < tempoMap->size() && tick >= double(tempoMap->at(tempoIndex + 1).tick)) {
+            ++tempoIndex;
+        }
+    }
+
+    return negative ? -elapsedMs : elapsedMs;
+}

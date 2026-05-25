@@ -5,6 +5,7 @@
 
 #include <QSqlDatabase>
 #include <QString>
+#include <QVector>
 
 struct PracticeSessionStart {
     QString mode;
@@ -30,6 +31,44 @@ struct PracticeSessionSummary {
     int missedCount = 0;
 };
 
+struct PracticeSessionRecord {
+    qint64 id = -1;
+    qint64 sheetId = -1;
+    QString sheetTitle;
+    QString startedAt;
+    QString endedAt;
+    QString mode;
+    bool completed = false;
+    int durationSeconds = 0;
+    int playbackSpeed = 100;
+    qint64 startTick = 0;
+    qint64 endTick = 0;
+    int correctCount = 0;
+    int wrongCount = 0;
+    int missedCount = 0;
+    int score = 0;
+};
+
+struct PracticeMistakeStat {
+    int midi = -1;
+    QString noteName;
+    int wrongCount = 0;
+    int missedCount = 0;
+    int earlyCount = 0;
+    int lateCount = 0;
+    int totalCount = 0;
+};
+
+struct PracticeReportSummary {
+    QVector<PracticeSessionRecord> recentSessions;
+    QVector<PracticeMistakeStat> mistakeStats;
+    int sessionCount = 0;
+    int averageScore = 0;
+    int totalCorrect = 0;
+    int totalWrong = 0;
+    int totalMissed = 0;
+};
+
 class PracticeRecordStore {
 public:
     PracticeRecordStore();
@@ -46,6 +85,9 @@ public:
     qint64 beginSession(qint64 sheetId, const PracticeSessionStart &start);
     bool appendEvent(qint64 sessionId, const PracticeEventRecord &event);
     bool finishSession(qint64 sessionId, const PracticeSessionSummary &summary);
+    QVector<PracticeSessionRecord> recentSessions(int limit = 5, qint64 sheetId = -1);
+    QVector<PracticeMistakeStat> mistakeStatsForSheet(qint64 sheetId, int limit = 8);
+    PracticeReportSummary reportForSheet(qint64 sheetId, int sessionLimit = 5, int mistakeLimit = 8);
 
     static QString judgeTypeToString(PracticeJudgeType type);
 
