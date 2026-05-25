@@ -22,6 +22,8 @@ qt_add_executable(SmartPianoQt
     src/core/Song.h
     src/library/MidiLibraryService.cpp
     src/library/MidiLibraryService.h
+    src/midi/MidiInputService.cpp
+    src/midi/MidiInputService.h
     src/parser/JsonSheetParser.cpp
     src/parser/JsonSheetParser.h
     src/playback/PlaybackClock.cpp
@@ -41,6 +43,9 @@ qt_add_qml_module(SmartPianoQt
     VERSION 1.0
     QML_FILES
         qml/Main.qml
+        qml/components/ControlPanel.qml
+        qml/components/LocalMidiPanel.qml
+        qml/components/VirtualKeyboard.qml
 )
 
 target_include_directories(SmartPianoQt PRIVATE
@@ -54,16 +59,22 @@ target_link_libraries(SmartPianoQt PRIVATE
     Qt6::QuickControls2
 )
 
+if(WIN32)
+    target_link_libraries(SmartPianoQt PRIVATE winmm)
+endif()
+
 include(CTest)
 
 if(BUILD_TESTING)
     add_executable(SmartPianoQtTests
-        tests/test_parsers.cpp
+        tests/test_core.cpp
         src/core/NoteUtils.cpp
         src/core/NoteUtils.h
         src/core/Song.h
         src/parser/JsonSheetParser.cpp
         src/parser/JsonSheetParser.h
+        src/midi/MidiInputService.cpp
+        src/midi/MidiInputService.h
         src/parser/MidiFileParser.cpp
         src/parser/MidiFileParser.h
         src/playback/PlaybackClock.cpp
@@ -81,6 +92,10 @@ if(BUILD_TESTING)
     target_link_libraries(SmartPianoQtTests PRIVATE
         Qt6::Core
     )
+
+    if(WIN32)
+        target_link_libraries(SmartPianoQtTests PRIVATE winmm)
+    endif()
 
     if(WIN32)
         add_test(

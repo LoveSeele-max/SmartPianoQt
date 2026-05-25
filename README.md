@@ -13,6 +13,7 @@ SmartPianoQt 是 Smart Piano 的 Qt 6 桌面版初版。当前目标不是一次
 - MIDI 解析支持 tempo map 保留、延音踏板、缺失 NoteOff 兜底，并有基础 parser 测试覆盖。
 - 自动播放由独立 PlaybackEngine 按 MIDI tempo map 推进，变速 MIDI 可按曲谱速度变化播放，并支持 50% 到 150% 整体变速练习。
 - 支持本地 MIDI 曲谱库：把 `.mid/.midi` 文件放进 `midi_library/` 后刷新即可加载。
+- 左侧 MIDI 输入面板已支持 Windows MIDI 设备列表、连接入口和 `0xFE/0xF8` 实时消息过滤。
 - 内置《小星星》示例曲。
 
 ## 本机环境
@@ -46,7 +47,7 @@ cmake --build build --parallel 4
 ctest --test-dir build --output-on-failure
 ```
 
-当前测试覆盖 NoteUtils、JSON parser、MIDI tempo map、sustain pedal、缺失 NoteOff 兜底、异常 VLQ、tempo map 播放推进、PlaybackEngine 状态推进和 PracticeEngine 核心判定。
+当前测试覆盖 NoteUtils、JSON parser、MIDI parser、MIDI 输入过滤、tempo map 播放推进、PlaybackEngine 状态推进和 PracticeEngine 核心判定。
 
 ## 运行
 
@@ -90,6 +91,12 @@ $env:QT_PREFIX = "D:\Qt\6.11.1\mingw_64"
 
 为了避免误提交曲谱文件，`midi_library/*.mid` 和 `midi_library/*.midi` 已加入 `.gitignore`。
 
+## MIDI 输入
+
+当前 Windows 构建会通过系统 MIDI API 枚举输入设备，连接后会把 NoteOn / NoteOff 转给练习判定链路。实时消息 `0xFE` Active Sensing 和 `0xF8` Timing Clock 会被过滤。
+
+后续如果接入 RtMidi，可以替换 `src/midi/MidiInputService.*` 的底层枚举和打开设备实现，QML 和 `PianoController` 接口不用再大改。
+
 ## 钢琴音色
 
 最接近传统钢琴的方式是使用真实采样 SoundFont：
@@ -131,8 +138,8 @@ $env:FLUIDSYNTH_PREFIX = "E:\fluidsynth-v2.5.4-win10-x64-cpp11"
 
 ## 下一步
 
-- 接入 RtMidi，迁移 Yamaha PSR-E383 的 `0xFE/0xF8` 过滤。
+- 用 RtMidi 替换当前 Windows MIDI 输入后端，提升跨平台支持。
 - 打包 FluidSynth 运行库和推荐的开源钢琴 SoundFont。
 - 增加 SQLite 曲谱库和练习记录。
 - 增加 MusicXML / MXL 解析。
-- 接入 RtMidi 后，把真实 MIDI 键盘输入并入练习判定链路。
+- 根据 [docs/practice_database.md](docs/practice_database.md) 落地 SQLite 练习记录。

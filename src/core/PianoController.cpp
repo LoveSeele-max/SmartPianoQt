@@ -179,14 +179,15 @@ void PianoController::seekBeat(double beat)
     emit practiceChanged();
 }
 
-void PianoController::noteOn(int midi)
+void PianoController::noteOn(int midi, int velocity)
 {
     if (midi < 0 || midi > 127) return;
+    const int clampedVelocity = qBound(1, velocity, 127);
     const bool inserted = !m_pressedNotes.contains(midi);
-    m_pressedNotes.insert(midi);
+    m_pressedNotes.insert(midi, clampedVelocity);
 
     if (m_mode == QStringLiteral("practice") && m_playing && inserted) {
-        evaluatePracticeNote(midi);
+        evaluatePracticeNote(midi, clampedVelocity);
     }
 
     refreshActiveNotes();
@@ -409,9 +410,9 @@ void PianoController::preparePracticeAtCurrentPosition()
     emit practiceChanged();
 }
 
-void PianoController::evaluatePracticeNote(int midi)
+void PianoController::evaluatePracticeNote(int midi, int velocity)
 {
-    const PracticeNoteResult result = m_practice.noteOn(midi);
+    const PracticeNoteResult result = m_practice.noteOn(midi, velocity);
     if (result.type == PracticeJudgeType::Ignored) return;
 
     if (result.type == PracticeJudgeType::WrongNote) {
@@ -479,7 +480,10 @@ void PianoController::refreshActiveNotes()
     }
     m_autoNotes = autoNotes;
 
-    QSet<int> combined = m_pressedNotes;
+    QSet<int> combined;
+    for (auto it = m_pressedNotes.cbegin(); it != m_pressedNotes.cend(); ++it) {
+        combined.insert(it.key());
+    }
     for (int midi : m_autoNotes) combined.insert(midi);
 
     if (combined == m_activeNotes) return;
@@ -552,6 +556,10 @@ double PianoController::tickToBeat(qint64 tick) const
 
 int PianoController::velocityForMidi(int midi) const
 {
+    if (m_pressedNotes.contains(midi)) {
+        return qBound(1, m_pressedNotes.value(midi), 127);
+    }
+
     if (m_autoNotes.contains(midi)) {
         const qint64 currentTick = m_playbackEngine.currentTick();
         const qint64 searchStartTick = qMax<qint64>(0, currentTick - m_playbackEngine.maxNoteDurationTick() - 1);

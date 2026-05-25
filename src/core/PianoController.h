@@ -5,6 +5,7 @@
 #include "playback/PlaybackEngine.h"
 #include "practice/PracticeEngine.h"
 
+#include <QHash>
 #include <QObject>
 #include <QSet>
 #include <QTimer>
@@ -69,7 +70,7 @@ public slots:
     Q_INVOKABLE void playPause();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void seekBeat(double beat);
-    Q_INVOKABLE void noteOn(int midi);
+    Q_INVOKABLE void noteOn(int midi, int velocity = 112);
     Q_INVOKABLE void noteOff(int midi);
     Q_INVOKABLE void loadDemoSong();
     Q_INVOKABLE void loadSheet(const QUrl &url);
@@ -103,7 +104,7 @@ private:
     void loadJsonSheet(const QString &path);
     void loadMidiFile(const QString &path);
     void preparePracticeAtCurrentPosition();
-    void evaluatePracticeNote(int midi);
+    void evaluatePracticeNote(int midi, int velocity);
     void resetPracticeState(bool resetStats, bool resetPlayed = true);
     void refreshActiveNotes();
     void setPlaying(bool playing);
@@ -124,7 +125,7 @@ private:
 
     QTimer m_timer;
     QElapsedTimer m_frameClock;
-    QSet<int> m_pressedNotes;
+    QHash<int, int> m_pressedNotes;
     QSet<int> m_autoNotes;
     QSet<int> m_activeNotes;
     MidiSynth m_synth;

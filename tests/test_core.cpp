@@ -1,4 +1,5 @@
 #include "core/NoteUtils.h"
+#include "midi/MidiInputService.h"
 #include "parser/JsonSheetParser.h"
 #include "parser/MidiFileParser.h"
 #include "playback/PlaybackClock.h"
@@ -402,12 +403,13 @@ void testPracticeEngineSingleNoteAndWrongNote()
 
     expect(practice.expectedTick() == 0, "PracticeEngine should start at the first note tick");
 
-    const PracticeNoteResult wrong = practice.noteOn(61);
+    const PracticeNoteResult wrong = practice.noteOn(61, 96);
     expect(wrong.type == PracticeJudgeType::WrongNote, "PracticeEngine should reject wrong notes");
+    expect(wrong.actualVelocity == 96, "PracticeEngine should preserve input velocity in judge results");
     expect(practice.wrongCount() == 1, "PracticeEngine should count wrong notes");
     expect(practice.expectedTick() == 0, "wrong notes should not advance practice");
 
-    const PracticeNoteResult correct = practice.noteOn(60);
+    const PracticeNoteResult correct = practice.noteOn(60, 96);
     expect(correct.type == PracticeJudgeType::Correct, "PracticeEngine should accept expected notes");
     expect(correct.countedCorrect, "first correct note should increment correct count");
     expect(correct.stepComplete, "single-note step should complete immediately");
@@ -420,17 +422,17 @@ void testPracticeEngineChordRequiresAllNotes()
     PracticeEngine practice;
     practice.setSong({ makeNote(64, 0), makeNote(67, 0), makeNote(69, 480) });
 
-    const PracticeNoteResult first = practice.noteOn(64);
+    const PracticeNoteResult first = practice.noteOn(64, 96);
     expect(first.type == PracticeJudgeType::Correct, "PracticeEngine should accept a chord member");
     expect(first.countedCorrect, "first chord member should count once");
     expect(!first.stepComplete, "partial chord should not complete the step");
     expect(practice.expectedTick() == 0, "partial chord should keep the same expected tick");
 
-    const PracticeNoteResult repeat = practice.noteOn(64);
+    const PracticeNoteResult repeat = practice.noteOn(64, 96);
     expect(!repeat.countedCorrect, "repeating an already matched chord note should not count again");
     expect(practice.correctCount() == 1, "repeated chord notes should not inflate correct count");
 
-    const PracticeNoteResult second = practice.noteOn(67);
+    const PracticeNoteResult second = practice.noteOn(67, 96);
     expect(second.stepComplete, "all chord notes should complete the step");
     expect(second.nextTick == 480, "completed chord should advance to the next note tick");
     expect(practice.correctCount() == 2, "each unique expected chord note should count once");
@@ -440,8 +442,8 @@ void testPracticeEngineSeekAndReset()
 {
     PracticeEngine practice;
     practice.setSong({ makeNote(60, 0), makeNote(62, 480), makeNote(64, 960) });
-    practice.noteOn(60);
-    practice.noteOn(61);
+    practice.noteOn(60, 96);
+    practice.noteOn(61, 96);
 
     expect(practice.correctCount() == 1, "precondition: practice should have one correct note");
     expect(practice.wrongCount() == 1, "precondition: practice should have one wrong note");
@@ -461,6 +463,23 @@ void testPracticeEngineSeekAndReset()
     practice.reset(true);
     expect(practice.correctCount() == 0, "reset with stats should clear correct count");
     expect(practice.wrongCount() == 0, "reset with stats should clear wrong count");
+}
+
+void testMidiInputMessageFiltering()
+{
+    const MidiInputMessage activeSensing = MidiInputService::decodeShortMessage(0xFE, 0, 0);
+    expect(activeSensing.type == MidiInputMessageType::Ignored, "MIDI input should ignore active sensing messages");
+
+    const MidiInputMessage timingClock = MidiInputService::decodeShortMessage(0xF8, 0, 0);
+    expect(timingClock.type == MidiInputMessageType::Ignored, "MIDI input should ignore timing clock messages");
+
+    const MidiInputMessage noteOn = MidiInputService::decodeShortMessage(0x90, 64, 77);
+    expect(noteOn.type == MidiInputMessageType::NoteOn, "MIDI input should decode note-on messages");
+    expect(noteOn.midi == 64, "MIDI input should preserve note-on pitch");
+    expect(noteOn.velocity == 77, "MIDI input should preserve note-on velocity");
+
+    const MidiInputMessage zeroVelocity = MidiInputService::decodeShortMessage(0x90, 64, 0);
+    expect(zeroVelocity.type == MidiInputMessageType::NoteOff, "MIDI input should treat note-on velocity zero as note-off");
 }
 
 }
@@ -489,6 +508,7 @@ int main()
     testPracticeEngineSingleNoteAndWrongNote();
     testPracticeEngineChordRequiresAllNotes();
     testPracticeEngineSeekAndReset();
+    testMidiInputMessageFiltering();
 
     if (failures == 0) {
         std::cout << "All core tests passed.\n";

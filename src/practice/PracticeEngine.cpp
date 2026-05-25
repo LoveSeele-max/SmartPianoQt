@@ -4,19 +4,14 @@
 
 void PracticeEngine::setSong(const QVector<NoteEvent> &notes)
 {
-    m_notes = notes;
-    std::sort(m_notes.begin(), m_notes.end(), [](const NoteEvent &a, const NoteEvent &b) {
-        if (a.startTick != b.startTick) return a.startTick < b.startTick;
-        return a.midi < b.midi;
-    });
-    rebuildPracticeTicks();
+    rebuildSteps(notes);
     reset(true);
 }
 
 void PracticeEngine::reset(bool resetStats)
 {
     m_matchedNotes.clear();
-    m_waitTickIndex = 0;
+    m_stepIndex = 0;
     if (resetStats) {
         m_correctCount = 0;
         m_wrongCount = 0;
@@ -26,14 +21,13 @@ void PracticeEngine::reset(bool resetStats)
 
 bool PracticeEngine::seek(qint64 tick)
 {
-    if (m_practiceTicks.isEmpty()) return false;
+    if (m_steps.isEmpty()) return false;
 
-    auto it = std::lower_bound(m_practiceTicks.begin(), m_practiceTicks.end(), tick);
-    if (it == m_practiceTicks.end()) {
-        m_waitTickIndex = m_practiceTicks.size();
-    } else {
-        m_waitTickIndex = int(std::distance(m_practiceTicks.begin(), it));
-    }
+    auto it = std::lower_bound(m_steps.begin(), m_steps.end(), tick,
+        [](const PracticeStep &step, qint64 targetTick) {
+            return step.tick < targetTick;
+        });
+    m_stepIndex = int(std::distance(m_steps.begin(), it));
 
     m_matchedNotes.clear();
     return true;
@@ -41,24 +35,25 @@ bool PracticeEngine::seek(qint64 tick)
 
 qint64 PracticeEngine::expectedTick() const
 {
-    if (!hasExpectedNotes()) return -1;
-    return m_practiceTicks.at(m_waitTickIndex);
+    const PracticeStep *step = currentStep();
+    return step ? step->tick : -1;
 }
 
 bool PracticeEngine::hasExpectedNotes() const
 {
-    return m_waitTickIndex >= 0 && m_waitTickIndex < m_practiceTicks.size();
+    return currentStep() != nullptr;
 }
 
-PracticeNoteResult PracticeEngine::noteOn(int midi)
+PracticeNoteResult PracticeEngine::noteOn(int midi, int velocity)
 {
     PracticeNoteResult result;
     result.actualMidi = midi;
-    if (!hasExpectedNotes()) return result;
+    result.actualVelocity = velocity;
 
-    const qint64 tick = expectedTick();
-    const QSet<int> expected = expectedMidiSet(tick);
-    if (!expected.contains(midi)) {
+    const PracticeStep *step = currentStep();
+    if (!step) return result;
+
+    if (!step->expectedMidi.contains(midi)) {
         ++m_wrongCount;
         result.type = PracticeJudgeType::WrongNote;
         result.statsChanged = true;
@@ -73,43 +68,45 @@ PracticeNoteResult PracticeEngine::noteOn(int midi)
         result.statsChanged = true;
     }
 
-    if (m_matchedNotes.size() >= expected.size()) {
+    if (m_matchedNotes.size() >= step->expectedMidi.size()) {
         result.stepComplete = true;
-        result.completedTick = tick;
+        result.completedTick = step->tick;
         m_matchedNotes.clear();
-        ++m_waitTickIndex;
+        ++m_stepIndex;
 
-        if (m_waitTickIndex >= m_practiceTicks.size()) {
+        if (m_stepIndex >= m_steps.size()) {
             result.songComplete = true;
         } else {
-            result.nextTick = m_practiceTicks.at(m_waitTickIndex);
+            result.nextTick = m_steps.at(m_stepIndex).tick;
         }
     }
 
     return result;
 }
 
-void PracticeEngine::rebuildPracticeTicks()
+void PracticeEngine::rebuildSteps(const QVector<NoteEvent> &notes)
 {
-    m_practiceTicks.clear();
-    qint64 last = -1;
-    for (const auto &note : m_notes) {
-        if (note.startTick != last) {
-            m_practiceTicks.push_back(note.startTick);
-            last = note.startTick;
+    QVector<NoteEvent> sortedNotes = notes;
+    std::sort(sortedNotes.begin(), sortedNotes.end(), [](const NoteEvent &a, const NoteEvent &b) {
+        if (a.startTick != b.startTick) return a.startTick < b.startTick;
+        return a.midi < b.midi;
+    });
+
+    m_steps.clear();
+    for (const auto &note : sortedNotes) {
+        if (m_steps.isEmpty() || m_steps.last().tick != note.startTick) {
+            PracticeStep step;
+            step.tick = note.startTick;
+            m_steps.push_back(step);
         }
+        PracticeStep &step = m_steps.last();
+        step.notes.push_back(note);
+        step.expectedMidi.insert(note.midi);
     }
 }
 
-QSet<int> PracticeEngine::expectedMidiSet(qint64 tick) const
+const PracticeStep *PracticeEngine::currentStep() const
 {
-    QSet<int> expected;
-    for (const auto &note : m_notes) {
-        if (note.startTick == tick) {
-            expected.insert(note.midi);
-        } else if (note.startTick > tick) {
-            break;
-        }
-    }
-    return expected;
+    if (m_stepIndex < 0 || m_stepIndex >= m_steps.size()) return nullptr;
+    return &m_steps.at(m_stepIndex);
 }
