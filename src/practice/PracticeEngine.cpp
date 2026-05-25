@@ -30,7 +30,7 @@ bool PracticeEngine::seek(qint64 tick)
 
     auto it = std::lower_bound(m_practiceTicks.begin(), m_practiceTicks.end(), tick);
     if (it == m_practiceTicks.end()) {
-        m_waitTickIndex = m_practiceTicks.size() - 1;
+        m_waitTickIndex = m_practiceTicks.size();
     } else {
         m_waitTickIndex = int(std::distance(m_practiceTicks.begin(), it));
     }

@@ -20,6 +20,7 @@ public:
     void noteOn(int midi, int velocity, int volume);
     void noteOff(int midi);
     void stopAll();
+    void setVolume(int volume);
 
     qint64 readData(char *data, qint64 maxSize) override;
     qint64 writeData(const char *data, qint64 maxSize) override;
@@ -45,6 +46,7 @@ private:
     std::vector<Voice> m_voices;
     double m_reverbL = 0.0;
     double m_reverbR = 0.0;
+    double m_masterGain = 1.0;
 };
 
 class FluidSynthAudioDevice;

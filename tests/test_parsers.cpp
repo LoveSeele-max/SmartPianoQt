@@ -166,6 +166,22 @@ void testJsonParser()
     expect(parsed.song.notes.at(2).startTick == 1920, "explicit JSON start beat should be converted with fixed PPQ");
 }
 
+void testJsonParserSkipsOutOfRangeMidi()
+{
+    const QByteArray json = R"({
+        "name": "Invalid Midi Test",
+        "data": [
+            { "midi": 200, "durationBeat": 1.0 },
+            { "midi": 60, "durationBeat": 1.0 }
+        ]
+    })";
+
+    const ParsedJsonSheet parsed = JsonSheetParser::parse(json, QStringLiteral("fallback"));
+    expect(parsed.ok, "JSON parser should keep valid notes when skipping invalid MIDI values");
+    expect(parsed.song.notes.size() == 1, "JSON parser should skip MIDI notes above 127");
+    expect(parsed.song.notes.at(0).midi == 60, "JSON parser should preserve the valid MIDI note");
+}
+
 void testMidiSustainAndTempo()
 {
     QByteArray track;
@@ -278,6 +294,14 @@ void testMidiRejectsInvalidSysexLength()
     const ParsedMidi parsed = MidiFileParser::parse(midiFile(track));
     expect(!parsed.ok, "MIDI parser should reject SysEx events that overrun the track");
     expect(parsed.error.contains(QStringLiteral("SysEx")), "invalid SysEx length should report a SysEx error");
+}
+
+void testMidiRejectsTruncatedChannelEvent()
+{
+    const QByteArray track = raw({ 0x00, 0x90, 60 });
+    const ParsedMidi parsed = MidiFileParser::parse(midiFile(track));
+    expect(!parsed.ok, "MIDI parser should reject truncated channel events");
+    expect(parsed.error.contains(QStringLiteral("通道事件")), "truncated channel event should report a channel event error");
 }
 
 void testPlaybackClockSingleTempo()
@@ -425,6 +449,10 @@ void testPracticeEngineSeekAndReset()
     expect(practice.seek(500), "PracticeEngine should seek inside a non-empty song");
     expect(practice.expectedTick() == 960, "seek should pick the first practice tick at or after the target");
 
+    expect(practice.seek(99999), "PracticeEngine should accept seeking past the last note");
+    expect(!practice.hasExpectedNotes(), "seek past the last note should leave no expected notes");
+    expect(practice.expectedTick() == -1, "seek past the last note should report no expected tick");
+
     practice.reset(false);
     expect(practice.expectedTick() == 0, "reset without stats should return to the first step");
     expect(practice.correctCount() == 1, "reset without stats should preserve correct count");
@@ -441,6 +469,7 @@ int main()
 {
     testNoteUtils();
     testJsonParser();
+    testJsonParserSkipsOutOfRangeMidi();
     testMidiSustainAndTempo();
     testMidiUnclosedNoteFallback();
     testMidiDefaultTempo();
@@ -449,6 +478,7 @@ int main()
     testMidiRejectsMalformedVlq();
     testMidiRejectsFormat2();
     testMidiRejectsInvalidSysexLength();
+    testMidiRejectsTruncatedChannelEvent();
     testPlaybackClockSingleTempo();
     testPlaybackClockCrossesTempoChange();
     testPlaybackClockNormalizesLateTempo();

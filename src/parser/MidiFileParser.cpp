@@ -127,7 +127,10 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
     QHash<int, qint64> trackEndTicks;
     qint64 lastTick = 0;
     for (int trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
-        if (!readChunk(bytes, offset, id, payload)) break;
+        if (!readChunk(bytes, offset, id, payload)) {
+            result.error = QStringLiteral("MIDI 轨道块不完整");
+            return result;
+        }
         if (id != "MTrk") continue;
 
         int pos = 0;
@@ -143,7 +146,10 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
             tick += delta;
             lastTick = qMax(lastTick, tick);
 
-            if (pos >= payload.size()) break;
+            if (pos >= payload.size()) {
+                result.error = QStringLiteral("MIDI 事件缺少状态字");
+                return result;
+            }
             int status = quint8(payload.at(pos++));
             if (status < 0x80) {
                 --pos;
@@ -153,14 +159,20 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
             }
 
             if (status == 0xFF) {
-                if (pos + 2 > payload.size()) break;
+                if (pos >= payload.size()) {
+                    result.error = QStringLiteral("MIDI Meta 事件不完整");
+                    return result;
+                }
                 const int metaType = quint8(payload.at(pos++));
                 qint64 length = 0;
                 if (!readVarLen(payload, pos, length)) {
                     result.error = QStringLiteral("MIDI 事件长度编码无效");
                     return result;
                 }
-                if (length < 0 || pos + length > payload.size()) break;
+                if (length < 0 || pos + length > payload.size()) {
+                    result.error = QStringLiteral("MIDI Meta 事件长度无效");
+                    return result;
+                }
 
                 if (metaType == 0x51 && length == 3) {
                     const int microsPerQuarter =
@@ -193,7 +205,10 @@ ParsedMidi MidiFileParser::parse(const QByteArray &bytes)
             }
 
             const int needed = bytesNeededForStatus(status);
-            if (needed == 0 || pos + needed > payload.size()) break;
+            if (needed == 0 || pos + needed > payload.size()) {
+                result.error = QStringLiteral("MIDI 通道事件不完整");
+                return result;
+            }
 
             const int high = status & 0xF0;
             const int channel = status & 0x0F;

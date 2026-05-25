@@ -58,7 +58,7 @@ ParsedJsonSheet JsonSheetParser::parse(const QByteArray &bytes, const QString &f
         if (midi < 0) {
             midi = NoteUtils::noteNameToMidi(item.value(QStringLiteral("note")).toString());
         }
-        if (midi < 0) continue;
+        if (midi < 0 || midi > 127) continue;
 
         const double startBeat = item.contains(QStringLiteral("startTimeBeat"))
                                      ? item.value(QStringLiteral("startTimeBeat")).toDouble()

@@ -398,7 +398,13 @@ void PianoController::preparePracticeAtCurrentPosition()
 {
     if (!m_practice.seek(m_playbackEngine.currentTick())) return;
 
-    m_playbackEngine.seekTick(m_practice.expectedTick());
+    const qint64 expectedTick = m_practice.expectedTick();
+    if (expectedTick < 0) {
+        emit practiceChanged();
+        return;
+    }
+
+    m_playbackEngine.seekTick(expectedTick);
     emit positionChanged();
     emit practiceChanged();
 }

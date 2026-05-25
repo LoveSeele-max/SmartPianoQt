@@ -98,8 +98,9 @@ public:
 
     void noteOn(int midi, int velocity, int volume)
     {
-        if (!m_synth || volume <= 0) return;
-        const int scaledVelocity = qBound(1, qRound(double(velocity) * double(volume) / 118.0), 127);
+        Q_UNUSED(volume)
+        if (!m_synth) return;
+        const int scaledVelocity = qBound(1, velocity, 127);
         QMutexLocker locker(&m_mutex);
         m_api.noteOn(m_synth, 0, midi, scaledVelocity);
     }
@@ -120,6 +121,13 @@ public:
         } else if (m_api.cc) {
             m_api.cc(m_synth, 0, 123, 0);
         }
+    }
+
+    void setVolume(int volume)
+    {
+        if (!m_synth || !m_api.cc) return;
+        QMutexLocker locker(&m_mutex);
+        m_api.cc(m_synth, 0, 7, qBound(0, volume, 127));
     }
 
     qint64 readData(char *data, qint64 maxSize) override
@@ -169,7 +177,8 @@ PianoAudioDevice::PianoAudioDevice(QObject *parent)
 
 void PianoAudioDevice::noteOn(int midi, int velocity, int volume)
 {
-    if (midi < 0 || midi > 127 || volume <= 0) return;
+    Q_UNUSED(volume)
+    if (midi < 0 || midi > 127) return;
 
     QMutexLocker locker(&m_mutex);
 
@@ -187,7 +196,7 @@ void PianoAudioDevice::noteOn(int midi, int velocity, int volume)
     voice.frequency = midiToFrequency(midi);
     voice.phase = 0.0;
     voice.age = 0.0;
-    voice.gain = qBound(0.0, (velocity / 127.0) * (volume / 118.0), 1.25);
+    voice.gain = qBound(0.0, velocity / 127.0, 1.25);
     m_voices.push_back(voice);
 
     if (m_voices.size() > 96) {
@@ -213,6 +222,12 @@ void PianoAudioDevice::stopAll()
     m_voices.clear();
     m_reverbL = 0.0;
     m_reverbR = 0.0;
+}
+
+void PianoAudioDevice::setVolume(int volume)
+{
+    QMutexLocker locker(&m_mutex);
+    m_masterGain = qBound(0.0, double(volume) / 118.0, 1.25);
 }
 
 qint64 PianoAudioDevice::readData(char *data, qint64 maxSize)
@@ -281,7 +296,7 @@ double PianoAudioDevice::renderVoice(Voice &voice)
         std::sin(phase * 4.002) * (0.055 * bright) +
         hammer * 0.08;
 
-    sample *= env * voice.gain * 0.26;
+    sample *= env * voice.gain * m_masterGain * 0.26;
 
     const double step = TwoPi * voice.frequency / SampleRate;
     voice.phase += step;
@@ -360,6 +375,12 @@ void MidiSynth::stopAll()
 void MidiSynth::setVolume(int volume)
 {
     m_volume = qBound(0, volume, 127);
+    if (m_fluidDevice) {
+        m_fluidDevice->setVolume(m_volume);
+    }
+    if (m_internalDevice) {
+        m_internalDevice->setVolume(m_volume);
+    }
 }
 
 void MidiSynth::open()
@@ -519,6 +540,7 @@ bool MidiSynth::openInternalPiano()
     }
 
     m_internalDevice = std::make_unique<PianoAudioDevice>();
+    m_internalDevice->setVolume(m_volume);
     m_audioSink = std::make_unique<QAudioSink>(device, m_format);
     m_audioSink->setBufferSize(4096);
     m_audioSink->start(m_internalDevice.get());
