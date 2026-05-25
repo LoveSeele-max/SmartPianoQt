@@ -19,7 +19,8 @@ jobs:
           host: windows
           target: desktop
           arch: win64_msvc2019_64
-          archives: qtbase qtdeclarative qtquickcontrols2 qtmultimedia qtshadertools
+          archives: qtbase qtdeclarative qtquickcontrols2 qtshadertools
+          modules: qtmultimedia
           cache: false
 
       - name: Configure
