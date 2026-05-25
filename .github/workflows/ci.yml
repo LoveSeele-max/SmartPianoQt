@@ -23,7 +23,30 @@ jobs:
           cache: false
 
       - name: Configure
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+        shell: pwsh
+        run: |
+          $args = @(
+            "-S", ".",
+            "-B", "build",
+            "-G", "Visual Studio 17 2022",
+            "-A", "x64",
+            "-DCMAKE_BUILD_TYPE=Release"
+          )
+          if ($env:QT_ROOT_DIR) {
+            $args += "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+          }
+          & cmake @args 2>&1 | Tee-Object cmake-configure.log
+          if ($LASTEXITCODE -ne 0) {
+            $matches = Get-Content cmake-configure.log |
+              Select-String -Pattern "CMake Error|Could NOT find|not found|No such file|error:" -Context 3,8
+            $snippet = ($matches | Out-String).Trim()
+            if (-not $snippet) {
+              $snippet = (Get-Content cmake-configure.log -Tail 100 | Out-String).Trim()
+            }
+            $snippet = $snippet -replace "%", "%25" -replace "`r", "" -replace "`n", "%0A"
+            Write-Host "::error title=CMake configure failed::$snippet"
+            exit $LASTEXITCODE
+          }
 
       - name: Build
         run: cmake --build build --config Release --parallel
