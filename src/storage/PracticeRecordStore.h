@@ -3,8 +3,10 @@
 #include "core/Song.h"
 #include "practice/PracticeEngine.h"
 
+#include <QHash>
 #include <QSqlDatabase>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 struct PracticeSessionStart {
@@ -26,6 +28,7 @@ struct PracticeEventRecord {
 struct PracticeSessionSummary {
     bool completed = false;
     qint64 endTick = 0;
+    int activeDurationSeconds = -1;
     int correctCount = 0;
     int wrongCount = 0;
     int missedCount = 0;
@@ -40,6 +43,7 @@ struct PracticeSessionRecord {
     QString mode;
     bool completed = false;
     int durationSeconds = 0;
+    int activeDurationSeconds = 0;
     int playbackSpeed = 100;
     qint64 startTick = 0;
     qint64 endTick = 0;
@@ -69,6 +73,17 @@ struct PracticeReportSummary {
     int totalMissed = 0;
 };
 
+struct StoredSheetInfo {
+    qint64 id = -1;
+    QString title;
+    QString filePath;
+    QString sourceFormat;
+    int bpm = 0;
+    int ppq = 0;
+    int noteCount = 0;
+    QString updatedAt;
+};
+
 class PracticeRecordStore {
 public:
     PracticeRecordStore();
@@ -85,15 +100,28 @@ public:
     qint64 beginSession(qint64 sheetId, const PracticeSessionStart &start);
     bool appendEvent(qint64 sessionId, const PracticeEventRecord &event);
     bool finishSession(qint64 sessionId, const PracticeSessionSummary &summary);
-    QVector<PracticeSessionRecord> recentSessions(int limit = 5, qint64 sheetId = -1);
-    QVector<PracticeMistakeStat> mistakeStatsForSheet(qint64 sheetId, int limit = 8);
-    PracticeReportSummary reportForSheet(qint64 sheetId, int sessionLimit = 5, int mistakeLimit = 8);
+    QVector<PracticeSessionRecord> recentSessions(int limit = 5,
+                                                  qint64 sheetId = -1,
+                                                  bool completedOnly = false,
+                                                  const QString &mode = QString());
+    QVector<PracticeMistakeStat> mistakeStatsForSheet(qint64 sheetId,
+                                                      int limit = 8,
+                                                      bool completedOnly = false,
+                                                      const QString &mode = QString());
+    PracticeReportSummary reportForSheet(qint64 sheetId,
+                                         int sessionLimit = 5,
+                                         int mistakeLimit = 8,
+                                         bool completedOnly = false,
+                                         const QString &mode = QString());
+    QHash<QString, StoredSheetInfo> sheetsForPaths(const QStringList &paths);
 
     static QString judgeTypeToString(PracticeJudgeType type);
 
 private:
     bool ensureOpen();
     bool initializeSchema();
+    int readUserVersion();
+    bool setUserVersion(int version);
     bool ensureColumn(const QString &table, const QString &column, const QString &definition);
     QString defaultDatabasePath() const;
     QString sheetHash(const Song &song) const;

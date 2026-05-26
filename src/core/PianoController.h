@@ -2,10 +2,13 @@
 
 #include "audio/MidiSynth.h"
 #include "core/Song.h"
+#include "library/LocalSheetModel.h"
 #include "playback/PlaybackEngine.h"
 #include "practice/PracticeEngine.h"
+#include "practice/PracticeSessionController.h"
 #include "storage/PracticeRecordStore.h"
 
+#include <QAbstractListModel>
 #include <QHash>
 #include <QObject>
 #include <QSet>
@@ -34,6 +37,7 @@ class PianoController : public QObject {
     Q_PROPERTY(QString audioStatus READ audioStatus NOTIFY audioStatusChanged)
     Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(QVariantList localMidiFiles READ localMidiFiles NOTIFY localMidiLibraryChanged)
+    Q_PROPERTY(QAbstractListModel* localSheetModel READ localSheetModel CONSTANT)
     Q_PROPERTY(QString localMidiLibraryPath READ localMidiLibraryPath NOTIFY localMidiLibraryChanged)
     Q_PROPERTY(QVariantMap practiceReport READ practiceReport NOTIFY practiceReportChanged)
 
@@ -57,7 +61,8 @@ public:
     QString statusMessage() const { return m_statusMessage; }
     QString audioStatus() const { return m_synth.statusText(); }
     int volume() const { return m_synth.volume(); }
-    QVariantList localMidiFiles() const { return m_localMidiFiles; }
+    QVariantList localMidiFiles() const { return m_localSheetModel.toVariantList(); }
+    QAbstractListModel *localSheetModel() { return &m_localSheetModel; }
     QString localMidiLibraryPath() const { return m_localMidiLibraryPath; }
     QVariantMap practiceReport() const { return m_practiceReport; }
     const QVector<NoteEvent> &noteEvents() const { return m_notes; }
@@ -147,13 +152,12 @@ private:
 
     PracticeEngine m_practice;
     PracticeRecordStore m_recordStore;
+    PracticeSessionController m_practiceSessions;
+    LocalSheetModel m_localSheetModel;
     qint64 m_currentSheetId = -1;
-    qint64 m_practiceSessionId = -1;
-    bool m_practiceSessionActive = false;
     QVariantMap m_practiceReport;
 
     QString m_statusMessage;
     qint64 m_positionNotifyAccumulatorMs = 0;
     QString m_localMidiLibraryPath;
-    QVariantList m_localMidiFiles;
 };

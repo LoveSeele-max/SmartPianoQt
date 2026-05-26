@@ -13,9 +13,12 @@
 #include <QStandardPaths>
 #include <QStringList>
 #include <QVariant>
+#include <QVariantList>
 #include <QtMath>
 
 namespace {
+
+constexpr int CurrentSchemaVersion = 2;
 
 QString utcNow()
 {
@@ -32,6 +35,73 @@ int scoreFor(const PracticeSessionSummary &summary)
     const int total = summary.correctCount + summary.wrongCount + summary.missedCount;
     if (total <= 0) return 0;
     return qBound(0, qRound(double(summary.correctCount) * 100.0 / double(total)), 100);
+}
+
+class ScopedTransaction {
+public:
+    explicit ScopedTransaction(QSqlDatabase &db)
+        : m_db(db)
+        , m_active(db.transaction())
+    {
+    }
+
+    ~ScopedTransaction()
+    {
+        if (m_active) {
+            m_db.rollback();
+        }
+    }
+
+    bool isActive() const { return m_active; }
+
+    bool commit()
+    {
+        if (!m_active) return false;
+        if (!m_db.commit()) return false;
+        m_active = false;
+        return true;
+    }
+
+private:
+    QSqlDatabase &m_db;
+    bool m_active = false;
+};
+
+QString placeholders(int count)
+{
+    QStringList items;
+    items.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        items.push_back(QStringLiteral("?"));
+    }
+    return items.join(QStringLiteral(","));
+}
+
+void appendSessionFilters(QString &sql,
+                          QVariantList &bindings,
+                          const QString &alias,
+                          qint64 sheetId,
+                          bool completedOnly,
+                          const QString &mode)
+{
+    if (sheetId > 0) {
+        sql += QStringLiteral("AND %1.sheet_id = ? ").arg(alias);
+        bindings.push_back(sheetId);
+    }
+    if (completedOnly) {
+        sql += QStringLiteral("AND %1.completed = 1 ").arg(alias);
+    }
+    if (!mode.isEmpty()) {
+        sql += QStringLiteral("AND %1.mode = ? ").arg(alias);
+        bindings.push_back(mode);
+    }
+}
+
+void bindAll(QSqlQuery &query, const QVariantList &bindings)
+{
+    for (const QVariant &value : bindings) {
+        query.addBindValue(value);
+    }
 }
 
 }
@@ -90,6 +160,12 @@ qint64 PracticeRecordStore::upsertSheet(const Song &song, const QString &filePat
 {
     if (!ensureOpen()) return -1;
 
+    ScopedTransaction transaction(m_db);
+    if (!transaction.isActive()) {
+        setLastError(m_db.lastError().text());
+        return -1;
+    }
+
     const QString hash = sheetHash(song);
     QSqlQuery select(m_db);
     select.prepare(QStringLiteral("SELECT id FROM sheets WHERE file_hash = ?"));
@@ -119,6 +195,10 @@ qint64 PracticeRecordStore::upsertSheet(const Song &song, const QString &filePat
             setLastError(update.lastError().text());
             return -1;
         }
+        if (!transaction.commit()) {
+            setLastError(m_db.lastError().text());
+            return -1;
+        }
         return id;
     }
 
@@ -140,13 +220,24 @@ qint64 PracticeRecordStore::upsertSheet(const Song &song, const QString &filePat
         setLastError(insert.lastError().text());
         return -1;
     }
+    const qint64 id = insert.lastInsertId().toLongLong();
+    if (!transaction.commit()) {
+        setLastError(m_db.lastError().text());
+        return -1;
+    }
 
-    return insert.lastInsertId().toLongLong();
+    return id;
 }
 
 qint64 PracticeRecordStore::beginSession(qint64 sheetId, const PracticeSessionStart &start)
 {
     if (sheetId <= 0 || !ensureOpen()) return -1;
+
+    ScopedTransaction transaction(m_db);
+    if (!transaction.isActive()) {
+        setLastError(m_db.lastError().text());
+        return -1;
+    }
 
     QSqlQuery insert(m_db);
     insert.prepare(QStringLiteral(
@@ -162,12 +253,23 @@ qint64 PracticeRecordStore::beginSession(qint64 sheetId, const PracticeSessionSt
         setLastError(insert.lastError().text());
         return -1;
     }
-    return insert.lastInsertId().toLongLong();
+    const qint64 id = insert.lastInsertId().toLongLong();
+    if (!transaction.commit()) {
+        setLastError(m_db.lastError().text());
+        return -1;
+    }
+    return id;
 }
 
 bool PracticeRecordStore::appendEvent(qint64 sessionId, const PracticeEventRecord &event)
 {
     if (sessionId <= 0 || event.result == PracticeJudgeType::Ignored || !ensureOpen()) return false;
+
+    ScopedTransaction transaction(m_db);
+    if (!transaction.isActive()) {
+        setLastError(m_db.lastError().text());
+        return false;
+    }
 
     QSqlQuery insert(m_db);
     insert.prepare(QStringLiteral(
@@ -187,12 +289,22 @@ bool PracticeRecordStore::appendEvent(qint64 sessionId, const PracticeEventRecor
         setLastError(insert.lastError().text());
         return false;
     }
+    if (!transaction.commit()) {
+        setLastError(m_db.lastError().text());
+        return false;
+    }
     return true;
 }
 
 bool PracticeRecordStore::finishSession(qint64 sessionId, const PracticeSessionSummary &summary)
 {
     if (sessionId <= 0 || !ensureOpen()) return false;
+
+    ScopedTransaction transaction(m_db);
+    if (!transaction.isActive()) {
+        setLastError(m_db.lastError().text());
+        return false;
+    }
 
     QSqlQuery select(m_db);
     select.prepare(QStringLiteral("SELECT started_at FROM practice_sessions WHERE id = ?"));
@@ -207,15 +319,19 @@ bool PracticeRecordStore::finishSession(qint64 sessionId, const PracticeSessionS
     const QDateTime started = QDateTime::fromString(select.value(0).toString(), Qt::ISODateWithMs);
     const QDateTime ended = QDateTime::currentDateTimeUtc();
     const int durationSeconds = started.isValid() ? int(started.secsTo(ended)) : 0;
+    const int activeDurationSeconds = summary.activeDurationSeconds >= 0
+        ? summary.activeDurationSeconds
+        : durationSeconds;
 
     QSqlQuery update(m_db);
     update.prepare(QStringLiteral(
         "UPDATE practice_sessions "
-        "SET ended_at = ?, duration_seconds = ?, completed = ?, end_tick = ?, "
+        "SET ended_at = ?, duration_seconds = ?, active_duration_seconds = ?, completed = ?, end_tick = ?, "
         "correct_count = ?, wrong_count = ?, missed_count = ?, score = ? "
         "WHERE id = ?"));
     update.addBindValue(ended.toString(Qt::ISODateWithMs));
     update.addBindValue(qMax(0, durationSeconds));
+    update.addBindValue(qMax(0, activeDurationSeconds));
     update.addBindValue(summary.completed ? 1 : 0);
     update.addBindValue(summary.endTick);
     update.addBindValue(summary.correctCount);
@@ -227,10 +343,17 @@ bool PracticeRecordStore::finishSession(qint64 sessionId, const PracticeSessionS
         setLastError(update.lastError().text());
         return false;
     }
+    if (!transaction.commit()) {
+        setLastError(m_db.lastError().text());
+        return false;
+    }
     return true;
 }
 
-QVector<PracticeSessionRecord> PracticeRecordStore::recentSessions(int limit, qint64 sheetId)
+QVector<PracticeSessionRecord> PracticeRecordStore::recentSessions(int limit,
+                                                                    qint64 sheetId,
+                                                                    bool completedOnly,
+                                                                    const QString &mode)
 {
     QVector<PracticeSessionRecord> sessions;
     if (!ensureOpen()) return sessions;
@@ -238,20 +361,18 @@ QVector<PracticeSessionRecord> PracticeRecordStore::recentSessions(int limit, qi
     const int clampedLimit = qBound(1, limit, 50);
     QString sql = QStringLiteral(
         "SELECT ps.id, ps.sheet_id, s.title, ps.started_at, ps.ended_at, ps.mode, ps.completed, "
-        "ps.duration_seconds, ps.playback_speed, ps.start_tick, COALESCE(ps.end_tick, 0), "
+        "ps.duration_seconds, ps.active_duration_seconds, ps.playback_speed, ps.start_tick, COALESCE(ps.end_tick, 0), "
         "ps.correct_count, ps.wrong_count, ps.missed_count, ps.score "
         "FROM practice_sessions ps "
-        "JOIN sheets s ON s.id = ps.sheet_id ");
-    if (sheetId > 0) {
-        sql += QStringLiteral("WHERE ps.sheet_id = ? ");
-    }
+        "JOIN sheets s ON s.id = ps.sheet_id "
+        "WHERE 1 = 1 ");
+    QVariantList bindings;
+    appendSessionFilters(sql, bindings, QStringLiteral("ps"), sheetId, completedOnly, mode);
     sql += QStringLiteral("ORDER BY ps.started_at DESC, ps.id DESC LIMIT ?");
 
     QSqlQuery query(m_db);
     query.prepare(sql);
-    if (sheetId > 0) {
-        query.addBindValue(sheetId);
-    }
+    bindAll(query, bindings);
     query.addBindValue(clampedLimit);
     if (!query.exec()) {
         setLastError(query.lastError().text());
@@ -268,25 +389,28 @@ QVector<PracticeSessionRecord> PracticeRecordStore::recentSessions(int limit, qi
         session.mode = query.value(5).toString();
         session.completed = query.value(6).toInt() != 0;
         session.durationSeconds = query.value(7).toInt();
-        session.playbackSpeed = query.value(8).toInt();
-        session.startTick = query.value(9).toLongLong();
-        session.endTick = query.value(10).toLongLong();
-        session.correctCount = query.value(11).toInt();
-        session.wrongCount = query.value(12).toInt();
-        session.missedCount = query.value(13).toInt();
-        session.score = query.value(14).toInt();
+        session.activeDurationSeconds = query.value(8).toInt();
+        session.playbackSpeed = query.value(9).toInt();
+        session.startTick = query.value(10).toLongLong();
+        session.endTick = query.value(11).toLongLong();
+        session.correctCount = query.value(12).toInt();
+        session.wrongCount = query.value(13).toInt();
+        session.missedCount = query.value(14).toInt();
+        session.score = query.value(15).toInt();
         sessions.push_back(session);
     }
     return sessions;
 }
 
-QVector<PracticeMistakeStat> PracticeRecordStore::mistakeStatsForSheet(qint64 sheetId, int limit)
+QVector<PracticeMistakeStat> PracticeRecordStore::mistakeStatsForSheet(qint64 sheetId,
+                                                                        int limit,
+                                                                        bool completedOnly,
+                                                                        const QString &mode)
 {
     QVector<PracticeMistakeStat> stats;
     if (sheetId <= 0 || !ensureOpen()) return stats;
 
-    QSqlQuery query(m_db);
-    query.prepare(QStringLiteral(
+    QString sql = QStringLiteral(
         "SELECT COALESCE(pe.expected_midi, pe.actual_midi) AS midi, "
         "SUM(CASE WHEN pe.result = 'wrong_note' THEN 1 ELSE 0 END) AS wrong_count, "
         "SUM(CASE WHEN pe.result = 'missed' THEN 1 ELSE 0 END) AS missed_count, "
@@ -295,13 +419,18 @@ QVector<PracticeMistakeStat> PracticeRecordStore::mistakeStatsForSheet(qint64 sh
         "COUNT(*) AS total_count "
         "FROM practice_events pe "
         "JOIN practice_sessions ps ON ps.id = pe.session_id "
-        "WHERE ps.sheet_id = ? "
-        "AND pe.result IN ('wrong_note', 'missed', 'early', 'late') "
-        "AND COALESCE(pe.expected_midi, pe.actual_midi) IS NOT NULL "
+        "WHERE pe.result IN ('wrong_note', 'missed', 'early', 'late') "
+        "AND COALESCE(pe.expected_midi, pe.actual_midi) IS NOT NULL ");
+    QVariantList bindings;
+    appendSessionFilters(sql, bindings, QStringLiteral("ps"), sheetId, completedOnly, mode);
+    sql += QStringLiteral(
         "GROUP BY midi "
         "ORDER BY total_count DESC, midi ASC "
-        "LIMIT ?"));
-    query.addBindValue(sheetId);
+        "LIMIT ?");
+
+    QSqlQuery query(m_db);
+    query.prepare(sql);
+    bindAll(query, bindings);
     query.addBindValue(qBound(1, limit, 50));
     if (!query.exec()) {
         setLastError(query.lastError().text());
@@ -322,21 +451,29 @@ QVector<PracticeMistakeStat> PracticeRecordStore::mistakeStatsForSheet(qint64 sh
     return stats;
 }
 
-PracticeReportSummary PracticeRecordStore::reportForSheet(qint64 sheetId, int sessionLimit, int mistakeLimit)
+PracticeReportSummary PracticeRecordStore::reportForSheet(qint64 sheetId,
+                                                           int sessionLimit,
+                                                           int mistakeLimit,
+                                                           bool completedOnly,
+                                                           const QString &mode)
 {
     PracticeReportSummary report;
     if (sheetId <= 0 || !ensureOpen()) return report;
 
-    report.recentSessions = recentSessions(sessionLimit, sheetId);
-    report.mistakeStats = mistakeStatsForSheet(sheetId, mistakeLimit);
+    report.recentSessions = recentSessions(sessionLimit, sheetId, completedOnly, mode);
+    report.mistakeStats = mistakeStatsForSheet(sheetId, mistakeLimit, completedOnly, mode);
 
-    QSqlQuery query(m_db);
-    query.prepare(QStringLiteral(
+    QString sql = QStringLiteral(
         "SELECT COUNT(*), COALESCE(ROUND(AVG(score)), 0), "
         "COALESCE(SUM(correct_count), 0), COALESCE(SUM(wrong_count), 0), COALESCE(SUM(missed_count), 0) "
-        "FROM practice_sessions "
-        "WHERE sheet_id = ?"));
-    query.addBindValue(sheetId);
+        "FROM practice_sessions ps "
+        "WHERE 1 = 1 ");
+    QVariantList bindings;
+    appendSessionFilters(sql, bindings, QStringLiteral("ps"), sheetId, completedOnly, mode);
+
+    QSqlQuery query(m_db);
+    query.prepare(sql);
+    bindAll(query, bindings);
     if (!query.exec()) {
         setLastError(query.lastError().text());
         return report;
@@ -350,6 +487,43 @@ PracticeReportSummary PracticeRecordStore::reportForSheet(qint64 sheetId, int se
         report.totalMissed = query.value(4).toInt();
     }
     return report;
+}
+
+QHash<QString, StoredSheetInfo> PracticeRecordStore::sheetsForPaths(const QStringList &paths)
+{
+    QHash<QString, StoredSheetInfo> records;
+    if (paths.isEmpty() || !ensureOpen()) return records;
+
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "SELECT id, title, file_path, source_format, bpm, ppq, note_count, updated_at "
+        "FROM sheets "
+        "WHERE file_path IN (%1) "
+        "ORDER BY updated_at DESC, id DESC").arg(placeholders(paths.size())));
+    for (const QString &path : paths) {
+        query.addBindValue(path);
+    }
+
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return records;
+    }
+
+    while (query.next()) {
+        StoredSheetInfo info;
+        info.id = query.value(0).toLongLong();
+        info.title = query.value(1).toString();
+        info.filePath = query.value(2).toString();
+        info.sourceFormat = query.value(3).toString();
+        info.bpm = query.value(4).toInt();
+        info.ppq = query.value(5).toInt();
+        info.noteCount = query.value(6).toInt();
+        info.updatedAt = query.value(7).toString();
+        if (!records.contains(info.filePath)) {
+            records.insert(info.filePath, info);
+        }
+    }
+    return records;
 }
 
 QString PracticeRecordStore::judgeTypeToString(PracticeJudgeType type)
@@ -380,6 +554,15 @@ bool PracticeRecordStore::ensureOpen()
 
 bool PracticeRecordStore::initializeSchema()
 {
+    ScopedTransaction transaction(m_db);
+    if (!transaction.isActive()) {
+        setLastError(m_db.lastError().text());
+        return false;
+    }
+
+    const int version = readUserVersion();
+    if (version < 0) return false;
+
     const QStringList statements = {
         QStringLiteral(
             "CREATE TABLE IF NOT EXISTS sheets ("
@@ -401,6 +584,7 @@ bool PracticeRecordStore::initializeSchema()
             "started_at TEXT NOT NULL,"
             "ended_at TEXT,"
             "duration_seconds INTEGER NOT NULL DEFAULT 0,"
+            "active_duration_seconds INTEGER NOT NULL DEFAULT 0,"
             "mode TEXT NOT NULL,"
             "playback_speed INTEGER NOT NULL DEFAULT 100,"
             "start_tick INTEGER NOT NULL DEFAULT 0,"
@@ -438,9 +622,44 @@ bool PracticeRecordStore::initializeSchema()
             return false;
         }
     }
-    if (!ensureColumn(QStringLiteral("practice_sessions"),
+
+    if (version < 1 &&
+        !ensureColumn(QStringLiteral("practice_sessions"),
                       QStringLiteral("completed"),
                       QStringLiteral("completed INTEGER NOT NULL DEFAULT 0"))) {
+        return false;
+    }
+    if (version < 2 &&
+        !ensureColumn(QStringLiteral("practice_sessions"),
+                      QStringLiteral("active_duration_seconds"),
+                      QStringLiteral("active_duration_seconds INTEGER NOT NULL DEFAULT 0"))) {
+        return false;
+    }
+    if (version < CurrentSchemaVersion && !setUserVersion(CurrentSchemaVersion)) {
+        return false;
+    }
+    if (!transaction.commit()) {
+        setLastError(m_db.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+int PracticeRecordStore::readUserVersion()
+{
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("PRAGMA user_version"))) {
+        setLastError(query.lastError().text());
+        return -1;
+    }
+    return query.next() ? query.value(0).toInt() : 0;
+}
+
+bool PracticeRecordStore::setUserVersion(int version)
+{
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("PRAGMA user_version = %1").arg(version))) {
+        setLastError(query.lastError().text());
         return false;
     }
     return true;

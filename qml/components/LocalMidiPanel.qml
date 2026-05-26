@@ -50,16 +50,20 @@ ColumnLayout {
             id: localMidiList
             anchors.fill: parent
             anchors.margins: 4
-            model: piano.localMidiFiles
+            model: piano.localSheetModel
             spacing: 3
             boundsBehavior: Flickable.StopAtBounds
 
             delegate: Rectangle {
-                required property var modelData
+                required property string fileName
+                required property string name
+                required property int sizeKb
+                required property bool knownSheet
+                required property int noteCount
                 required property int index
 
                 width: localMidiList.width
-                height: 34
+                height: 38
                 radius: 5
                 color: mouseArea.containsMouse ? "#27272a" : "#18181b"
                 border.color: "#27272a"
@@ -71,7 +75,7 @@ ColumnLayout {
                     spacing: 8
 
                     Label {
-                        text: modelData.fileName
+                        text: fileName
                         color: "#e4e4e7"
                         font.pixelSize: 12
                         elide: Text.ElideRight
@@ -79,7 +83,13 @@ ColumnLayout {
                     }
 
                     Label {
-                        text: modelData.sizeKb + " KB"
+                        text: knownSheet ? (noteCount > 0 ? noteCount + " notes" : "tracked") : "new"
+                        color: knownSheet ? "#22c55e" : "#71717a"
+                        font.pixelSize: 10
+                    }
+
+                    Label {
+                        text: sizeKb + " KB"
                         color: "#71717a"
                         font.pixelSize: 10
                     }
@@ -95,7 +105,7 @@ ColumnLayout {
 
             Label {
                 anchors.centerIn: parent
-                visible: piano.localMidiFiles.length === 0
+                visible: localMidiList.count === 0
                 text: "没有 MIDI 文件"
                 color: "#71717a"
                 font.pixelSize: 12

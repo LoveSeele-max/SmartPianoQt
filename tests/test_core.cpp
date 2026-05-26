@@ -12,6 +12,7 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QString>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <QVector>
 #include <QtMath>
@@ -531,6 +532,24 @@ void testPracticeEngineRhythmJudging()
     expect(missed.at(0).type == PracticeJudgeType::Missed, "overdue notes should be marked missed");
     expect(missed.at(0).expectedMidi == 62, "missed event should preserve expected pitch");
     expect(practice.missedCount() == 1, "missed rhythm notes should update missed count");
+
+    PracticeEngine chordPractice;
+    chordPractice.setSong({ makeNote(64, 480), makeNote(67, 480), makeNote(69, 960) });
+    const QVector<PracticeNoteResult> lateChord = chordPractice.noteOnRhythmDetailed(64, 90, 620, 60);
+    expect(lateChord.size() == 2, "late rhythm chord input should produce per-note results");
+    expect(lateChord.at(0).type == PracticeJudgeType::Late, "late chord hit should be reported as late");
+    expect(lateChord.at(0).expectedMidi == 64, "late chord hit should preserve the played expected pitch");
+    expect(lateChord.at(1).type == PracticeJudgeType::Missed, "unplayed chord members should be recorded as missed");
+    expect(lateChord.at(1).expectedMidi == 67, "missed chord member should preserve its expected pitch");
+    expect(lateChord.last().stepComplete, "late chord detail should complete the overdue step");
+    expect(chordPractice.missedCount() == 2, "late chord detail should count late and missed notes individually");
+
+    PracticeEngine legacyLatePractice;
+    legacyLatePractice.setSong({ makeNote(64, 480), makeNote(67, 480), makeNote(69, 960) });
+    const PracticeNoteResult legacyLate = legacyLatePractice.noteOnRhythm(64, 90, 620, 60);
+    expect(legacyLate.type == PracticeJudgeType::Late, "legacy rhythm API should keep late as the primary result");
+    expect(legacyLate.stepComplete, "legacy rhythm API should preserve step completion for late chords");
+    expect(legacyLate.nextTick == 960, "legacy rhythm API should preserve the next tick for late chords");
 }
 
 void testMidiInputMessageFiltering()
@@ -595,14 +614,35 @@ void testPracticeRecordStore()
     PracticeSessionSummary summary;
     summary.completed = true;
     summary.endTick = 1440;
+    summary.activeDurationSeconds = 7;
     summary.correctCount = 1;
     summary.wrongCount = 1;
     expect(store.finishSession(sessionId, summary), "PracticeRecordStore should finish a practice session");
 
+    PracticeSessionStart secondStart;
+    secondStart.mode = QStringLiteral("practice");
+    secondStart.playbackSpeed = 100;
+    secondStart.startTick = 0;
+    const qint64 secondSessionId = store.beginSession(sheetId, secondStart);
+    expect(secondSessionId > 0, "PracticeRecordStore should begin a second practice session");
+
+    PracticeSessionSummary secondSummary;
+    secondSummary.completed = false;
+    secondSummary.endTick = 480;
+    secondSummary.activeDurationSeconds = 3;
+    secondSummary.correctCount = 0;
+    secondSummary.wrongCount = 1;
+    expect(store.finishSession(secondSessionId, secondSummary), "PracticeRecordStore should finish a filtered practice session");
+
     const QVector<PracticeSessionRecord> recent = store.recentSessions(3, sheetId);
-    expect(recent.size() == 1, "PracticeRecordStore should query recent sessions for a sheet");
+    expect(recent.size() == 2, "PracticeRecordStore should query recent sessions for a sheet");
     expect(recent.at(0).sheetId == sheetId, "recent session should preserve sheet id");
-    expect(recent.at(0).score == 50, "recent session should expose calculated score");
+    expect(recent.at(0).activeDurationSeconds == 3, "recent session should expose active duration");
+
+    const QVector<PracticeSessionRecord> completedRhythm = store.recentSessions(
+        3, sheetId, true, QStringLiteral("rhythm"));
+    expect(completedRhythm.size() == 1, "PracticeRecordStore should filter recent sessions by completion and mode");
+    expect(completedRhythm.at(0).score == 50, "filtered recent session should expose calculated score");
 
     const QVector<PracticeMistakeStat> mistakes = store.mistakeStatsForSheet(sheetId, 3);
     expect(mistakes.size() == 1, "PracticeRecordStore should query mistake stats for a sheet");
@@ -610,9 +650,19 @@ void testPracticeRecordStore()
     expect(mistakes.at(0).wrongCount == 1, "mistake stats should count wrong notes");
 
     const PracticeReportSummary report = store.reportForSheet(sheetId, 3, 3);
-    expect(report.sessionCount == 1, "PracticeRecordStore report should count sessions");
-    expect(report.averageScore == 50, "PracticeRecordStore report should average scores");
-    expect(report.totalWrong == 1, "PracticeRecordStore report should aggregate wrong notes");
+    expect(report.sessionCount == 2, "PracticeRecordStore report should count sessions");
+    expect(report.averageScore == 25, "PracticeRecordStore report should average scores");
+    expect(report.totalWrong == 2, "PracticeRecordStore report should aggregate wrong notes");
+
+    const PracticeReportSummary completedReport = store.reportForSheet(
+        sheetId, 3, 3, true, QStringLiteral("rhythm"));
+    expect(completedReport.sessionCount == 1, "PracticeRecordStore report should filter completed rhythm sessions");
+    expect(completedReport.averageScore == 50, "filtered report should average only matching sessions");
+
+    const QHash<QString, StoredSheetInfo> sheetsByPath =
+        store.sheetsForPaths(QStringList{ QStringLiteral("test.mid") });
+    expect(sheetsByPath.contains(QStringLiteral("test.mid")), "PracticeRecordStore should query sheets by local path");
+    expect(sheetsByPath.value(QStringLiteral("test.mid")).id == sheetId, "sheet path query should preserve sheet id");
     store.close();
 
     const QString connectionName = QStringLiteral("practice-store-readback");
@@ -621,13 +671,16 @@ void testPracticeRecordStore()
     expect(db.open(), "readback database connection should open");
 
     QSqlQuery sessions(db);
-    expect(sessions.exec(QStringLiteral("SELECT mode, correct_count, score, completed FROM practice_sessions WHERE id = 1")),
+    expect(sessions.exec(QStringLiteral(
+               "SELECT mode, correct_count, score, completed, active_duration_seconds "
+               "FROM practice_sessions WHERE id = 1")),
            "readback session query should run");
     expect(sessions.next(), "readback should find the recorded session");
     expect(sessions.value(0).toString() == QStringLiteral("rhythm"), "recorded session should keep its mode");
     expect(sessions.value(1).toInt() == 1, "recorded session should keep final correct count");
     expect(sessions.value(2).toInt() == 50, "recorded session should calculate score");
     expect(sessions.value(3).toInt() == 1, "recorded session should keep completion state");
+    expect(sessions.value(4).toInt() == 7, "recorded session should keep active duration");
 
     QSqlQuery events(db);
     expect(events.exec(QStringLiteral("SELECT result, actual_midi FROM practice_events WHERE session_id = 1")),
@@ -636,11 +689,42 @@ void testPracticeRecordStore()
     expect(events.value(0).toString() == QStringLiteral("correct"), "recorded event should store judge type text");
     expect(events.value(1).toInt() == 60, "recorded event should keep actual pitch");
 
+    QSqlQuery version(db);
+    expect(version.exec(QStringLiteral("PRAGMA user_version")), "schema version query should run");
+    expect(version.next(), "schema version query should return a row");
+    expect(version.value(0).toInt() >= 2, "schema should store the migration user_version");
+
     sessions.finish();
     events.finish();
+    version.finish();
+
+    QSqlQuery setFutureVersion(db);
+    expect(setFutureVersion.exec(QStringLiteral("PRAGMA user_version = 9")),
+           "schema version should be adjustable for future-version migration tests");
+    setFutureVersion.finish();
+
     db.close();
     db = QSqlDatabase();
     QSqlDatabase::removeDatabase(connectionName);
+
+    PracticeRecordStore reopened;
+    expect(reopened.open(dbPath), "PracticeRecordStore should reopen a future-version database");
+    reopened.close();
+
+    const QString futureConnectionName = QStringLiteral("practice-store-future-version");
+    QSqlDatabase futureDb = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), futureConnectionName);
+    futureDb.setDatabaseName(dbPath);
+    expect(futureDb.open(), "future-version readback database connection should open");
+
+    QSqlQuery futureVersion(futureDb);
+    expect(futureVersion.exec(QStringLiteral("PRAGMA user_version")), "future schema version query should run");
+    expect(futureVersion.next(), "future schema version query should return a row");
+    expect(futureVersion.value(0).toInt() == 9, "schema migration should not downgrade newer user_version values");
+
+    futureVersion.finish();
+    futureDb.close();
+    futureDb = QSqlDatabase();
+    QSqlDatabase::removeDatabase(futureConnectionName);
 }
 
 }

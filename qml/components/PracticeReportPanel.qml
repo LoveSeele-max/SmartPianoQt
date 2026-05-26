@@ -15,7 +15,7 @@ ColumnLayout {
 
     Rectangle {
         Layout.fillWidth: true
-        height: 118
+        height: 202
         radius: 7
         color: "#111113"
         border.color: "#2f3036"
@@ -60,6 +60,67 @@ ColumnLayout {
                 color: "#cbd5e1"
                 font.pixelSize: 11
                 elide: Text.ElideRight
+            }
+
+            ListView {
+                id: recentSessionList
+                Layout.fillWidth: true
+                Layout.preferredHeight: 70
+                model: piano.practiceReport.sessions
+                spacing: 3
+                interactive: false
+                clip: true
+
+                delegate: RowLayout {
+                    required property string startedAt
+                    required property string mode
+                    required property int score
+                    required property int correct
+                    required property int wrong
+                    required property int missed
+                    required property int activeDurationSeconds
+
+                    width: recentSessionList.width
+                    height: 20
+                    spacing: 6
+
+                    Label {
+                        text: startedAt
+                        color: "#a1a1aa"
+                        font.pixelSize: 10
+                        Layout.preferredWidth: 54
+                    }
+
+                    Label {
+                        text: mode
+                        color: "#38bdf8"
+                        font.pixelSize: 10
+                        Layout.preferredWidth: 42
+                        elide: Text.ElideRight
+                    }
+
+                    Label {
+                        text: score + "%"
+                        color: "#22c55e"
+                        font.pixelSize: 10
+                        font.bold: true
+                        Layout.preferredWidth: 34
+                    }
+
+                    Label {
+                        text: "OK " + correct + "  W " + wrong + "  M " + missed
+                        color: "#cbd5e1"
+                        font.pixelSize: 10
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+
+                    Label {
+                        text: activeDurationSeconds + "s"
+                        color: "#71717a"
+                        font.pixelSize: 10
+                    }
+                }
             }
         }
     }

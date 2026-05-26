@@ -48,6 +48,7 @@ public:
     bool hasExpectedNotes() const;
     PracticeNoteResult noteOn(int midi, int velocity);
     PracticeNoteResult noteOnRhythm(int midi, int velocity, qint64 actualTick, qint64 toleranceTick);
+    QVector<PracticeNoteResult> noteOnRhythmDetailed(int midi, int velocity, qint64 actualTick, qint64 toleranceTick);
     QVector<PracticeNoteResult> markMissedUntil(qint64 actualTick, qint64 toleranceTick);
 
     int correctCount() const { return m_correctCount; }

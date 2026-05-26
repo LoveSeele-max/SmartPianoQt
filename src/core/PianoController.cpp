@@ -31,12 +31,15 @@ bool isPracticeModeName(const QString &mode)
 
 PianoController::PianoController(QObject *parent)
     : QObject(parent)
+    , m_practiceSessions(&m_recordStore)
 {
     m_timer.setInterval(16);
     m_timer.setTimerType(Qt::PreciseTimer);
     connect(&m_timer, &QTimer::timeout, this, &PianoController::onFrame);
     m_localMidiLibraryPath = MidiLibraryService::resolveLibraryPath();
     m_recordStore.open();
+    m_localSheetModel.setRecordStore(&m_recordStore);
+    m_localSheetModel.setLibraryPath(m_localMidiLibraryPath);
     refreshLocalMidiLibrary();
     loadDemoSong();
 }
@@ -140,6 +143,7 @@ void PianoController::playPause()
 {
     if (m_playing) {
         setPlaying(false);
+        m_practiceSessions.pause();
         setStatusMessage(QStringLiteral("已暂停"));
         return;
     }
@@ -292,20 +296,20 @@ void PianoController::loadSheet(const QUrl &url)
 
 void PianoController::refreshLocalMidiLibrary()
 {
-    m_localMidiFiles = MidiLibraryService::scanLibrary(m_localMidiLibraryPath);
+    m_localSheetModel.refresh();
     emit localMidiLibraryChanged();
-    setStatusMessage(QStringLiteral("本地 MIDI 库已刷新：%1 首").arg(m_localMidiFiles.size()));
+    setStatusMessage(QStringLiteral("本地 MIDI 库已刷新：%1 首").arg(m_localSheetModel.rowCount()));
 }
 
 void PianoController::loadLocalMidi(int index)
 {
-    if (index < 0 || index >= m_localMidiFiles.size()) {
+    const QString path = m_localSheetModel.filePathAt(index);
+    if (path.isEmpty()) {
         setStatusMessage(QStringLiteral("请选择本地 MIDI 曲谱"));
         return;
     }
 
-    const QVariantMap item = m_localMidiFiles.at(index).toMap();
-    loadMidiFile(item.value(QStringLiteral("path")).toString());
+    loadMidiFile(path);
 }
 
 void PianoController::openLocalMidiLibrary()
@@ -383,6 +387,7 @@ void PianoController::setSong(Song song, const QString &sourcePath, const QStrin
     m_songTitle = song.title;
     m_playbackEngine.setSong(song);
     m_currentSheetId = m_recordStore.upsertSheet(song, sourcePath, sourceFormat);
+    m_practiceSessions.setSheetId(m_currentSheetId);
     m_notes = std::move(song.notes);
 
     m_practice.setSong(m_notes);
@@ -394,6 +399,7 @@ void PianoController::setSong(Song song, const QString &sourcePath, const QStrin
     emit notesChanged();
     emit positionChanged();
     emit practiceChanged();
+    refreshLocalMidiLibrary();
     refreshPracticeReport();
 }
 
@@ -450,22 +456,39 @@ void PianoController::preparePracticeAtCurrentPosition()
 
 void PianoController::evaluatePracticeNote(int midi, int velocity)
 {
-    const PracticeNoteResult result = isRhythmPracticeMode()
-        ? m_practice.noteOnRhythm(midi, velocity, m_playbackEngine.currentTick(), rhythmToleranceTick())
-        : m_practice.noteOn(midi, velocity);
-    if (result.type == PracticeJudgeType::Ignored) return;
+    QVector<PracticeNoteResult> results;
+    if (isRhythmPracticeMode()) {
+        results = m_practice.noteOnRhythmDetailed(
+            midi, velocity, m_playbackEngine.currentTick(), rhythmToleranceTick());
+    } else {
+        const PracticeNoteResult result = m_practice.noteOn(midi, velocity);
+        if (result.type != PracticeJudgeType::Ignored) {
+            results.push_back(result);
+        }
+    }
+    if (results.isEmpty()) return;
 
-    appendPracticeEvent(result);
+    bool anyStatsChanged = false;
+    const PracticeNoteResult *completion = nullptr;
+    for (const PracticeNoteResult &item : results) {
+        appendPracticeEvent(item);
+        anyStatsChanged = anyStatsChanged || item.statsChanged;
+        if (item.stepComplete) {
+            completion = &item;
+        }
+    }
+
+    const PracticeNoteResult &result = results.first();
 
     if (result.type == PracticeJudgeType::WrongNote) {
         setStatusMessage(QStringLiteral("错音：%1").arg(NoteUtils::midiToName(midi)));
-        emit statsChanged();
+        if (anyStatsChanged) emit statsChanged();
         return;
     }
 
     if (result.type == PracticeJudgeType::Early) {
         setStatusMessage(QStringLiteral("太早：%1").arg(NoteUtils::midiToName(midi)));
-        if (result.statsChanged) emit statsChanged();
+        if (anyStatsChanged) emit statsChanged();
         return;
     }
 
@@ -475,22 +498,22 @@ void PianoController::evaluatePracticeNote(int midi, int velocity)
         setStatusMessage(QStringLiteral("重复音：%1").arg(NoteUtils::midiToName(midi)));
     }
 
-    if (result.statsChanged) {
+    if (anyStatsChanged) {
         emit statsChanged();
     }
 
-    if (result.stepComplete) {
+    if (completion) {
         for (auto &note : m_notes) {
-            if (note.startTick == result.completedTick) note.played = true;
+            if (note.startTick == completion->completedTick) note.played = true;
         }
 
-        if (result.songComplete) {
+        if (completion->songComplete) {
             m_playbackEngine.seekTick(m_playbackEngine.totalTicks());
             setPlaying(false);
             finishPracticeSession(true);
             setStatusMessage(QStringLiteral("练习完成"));
         } else if (!isRhythmPracticeMode()) {
-            m_playbackEngine.seekTick(result.nextTick);
+            m_playbackEngine.seekTick(completion->nextTick);
             setStatusMessage(QStringLiteral("正确，继续"));
         } else if (result.type == PracticeJudgeType::Correct) {
             setStatusMessage(QStringLiteral("节奏正确"));
@@ -620,46 +643,26 @@ qint64 PianoController::rhythmToleranceTick() const
 
 void PianoController::beginPracticeSession()
 {
-    if (m_practiceSessionActive || m_currentSheetId <= 0) return;
-
-    PracticeSessionStart start;
-    start.mode = m_mode;
-    start.playbackSpeed = m_playbackEngine.playbackSpeed();
-    start.startTick = m_playbackEngine.currentTick();
-    m_practiceSessionId = m_recordStore.beginSession(m_currentSheetId, start);
-    m_practiceSessionActive = m_practiceSessionId > 0;
+    m_practiceSessions.begin(m_mode, m_playbackEngine.playbackSpeed(), m_playbackEngine.currentTick());
 }
 
 void PianoController::appendPracticeEvent(const PracticeNoteResult &result)
 {
-    if (!m_practiceSessionActive) return;
-
-    PracticeEventRecord event;
-    event.result = result.type;
-    event.expectedMidi = result.expectedMidi;
-    event.actualMidi = result.actualMidi;
-    event.velocity = result.actualVelocity;
-    event.expectedTick = result.expectedTick;
-    event.actualTick = result.actualTick >= 0 ? result.actualTick : m_playbackEngine.currentTick();
-    event.offsetMs = tickOffsetToMs(event.expectedTick, event.actualTick);
-    m_recordStore.appendEvent(m_practiceSessionId, event);
+    const qint64 actualTick = result.actualTick >= 0 ? result.actualTick : m_playbackEngine.currentTick();
+    m_practiceSessions.append(result,
+                              actualTick,
+                              tickOffsetToMs(result.expectedTick, actualTick));
 }
 
 void PianoController::finishPracticeSession(bool completed)
 {
-    if (!m_practiceSessionActive) return;
-
-    PracticeSessionSummary summary;
-    summary.completed = completed;
-    summary.endTick = m_playbackEngine.currentTick();
-    summary.correctCount = m_practice.correctCount();
-    summary.wrongCount = m_practice.wrongCount();
-    summary.missedCount = m_practice.missedCount();
-    m_recordStore.finishSession(m_practiceSessionId, summary);
-
-    m_practiceSessionId = -1;
-    m_practiceSessionActive = false;
-    refreshPracticeReport();
+    if (m_practiceSessions.finish(completed,
+                                  m_playbackEngine.currentTick(),
+                                  m_practice.correctCount(),
+                                  m_practice.wrongCount(),
+                                  m_practice.missedCount())) {
+        refreshPracticeReport();
+    }
 }
 
 void PianoController::refreshPracticeReport()
@@ -691,12 +694,34 @@ QVariantMap PianoController::practiceReportToVariant(const PracticeReportSummary
         latest.insert(QStringLiteral("wrong"), session.wrongCount);
         latest.insert(QStringLiteral("missed"), session.missedCount);
         latest.insert(QStringLiteral("durationSeconds"), session.durationSeconds);
+        latest.insert(QStringLiteral("activeDurationSeconds"), session.activeDurationSeconds);
         const QDateTime started = QDateTime::fromString(session.startedAt, Qt::ISODateWithMs);
         latest.insert(QStringLiteral("startedAt"),
                       started.isValid() ? started.toLocalTime().toString(QStringLiteral("MM-dd HH:mm"))
                                         : session.startedAt);
     }
     map.insert(QStringLiteral("latest"), latest);
+
+    QVariantList sessions;
+    sessions.reserve(report.recentSessions.size());
+    for (const PracticeSessionRecord &session : report.recentSessions) {
+        QVariantMap item;
+        item.insert(QStringLiteral("id"), session.id);
+        item.insert(QStringLiteral("mode"), session.mode);
+        item.insert(QStringLiteral("score"), session.score);
+        item.insert(QStringLiteral("completed"), session.completed);
+        item.insert(QStringLiteral("correct"), session.correctCount);
+        item.insert(QStringLiteral("wrong"), session.wrongCount);
+        item.insert(QStringLiteral("missed"), session.missedCount);
+        item.insert(QStringLiteral("durationSeconds"), session.durationSeconds);
+        item.insert(QStringLiteral("activeDurationSeconds"), session.activeDurationSeconds);
+        const QDateTime started = QDateTime::fromString(session.startedAt, Qt::ISODateWithMs);
+        item.insert(QStringLiteral("startedAt"),
+                    started.isValid() ? started.toLocalTime().toString(QStringLiteral("MM-dd HH:mm"))
+                                      : session.startedAt);
+        sessions.push_back(item);
+    }
+    map.insert(QStringLiteral("sessions"), sessions);
 
     QVariantList mistakes;
     mistakes.reserve(report.mistakeStats.size());

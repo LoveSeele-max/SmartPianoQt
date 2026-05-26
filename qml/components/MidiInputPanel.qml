@@ -45,7 +45,7 @@ ColumnLayout {
 
     Label {
         Layout.fillWidth: true
-        text: midiInput.statusText
+        text: midiInput.backendName + " · " + midiInput.statusText
         color: "#71717a"
         font.pixelSize: 10
         elide: Text.ElideRight

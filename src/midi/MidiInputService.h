@@ -21,6 +21,7 @@ class MidiInputService : public QObject {
     Q_OBJECT
     Q_PROPERTY(QStringList inputPorts READ inputPorts NOTIFY portsChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged)
+    Q_PROPERTY(QString backendName READ backendName CONSTANT)
 
 public:
     explicit MidiInputService(QObject *parent = nullptr);
@@ -28,6 +29,7 @@ public:
 
     QStringList inputPorts() const { return m_inputPorts; }
     QString statusText() const { return m_statusText; }
+    QString backendName() const;
 
     Q_INVOKABLE void refreshPorts();
     Q_INVOKABLE void openPort(int index);

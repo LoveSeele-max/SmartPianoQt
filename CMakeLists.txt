@@ -22,6 +22,8 @@ qt_add_executable(SmartPianoQt
     src/core/PianoController.cpp
     src/core/PianoController.h
     src/core/Song.h
+    src/library/LocalSheetModel.cpp
+    src/library/LocalSheetModel.h
     src/library/MidiLibraryService.cpp
     src/library/MidiLibraryService.h
     src/midi/MidiInputService.cpp
@@ -34,6 +36,8 @@ qt_add_executable(SmartPianoQt
     src/playback/PlaybackEngine.h
     src/practice/PracticeEngine.cpp
     src/practice/PracticeEngine.h
+    src/practice/PracticeSessionController.cpp
+    src/practice/PracticeSessionController.h
     src/storage/PracticeRecordStore.cpp
     src/storage/PracticeRecordStore.h
     src/ui/PianoRollItem.cpp

@@ -64,6 +64,15 @@ MidiInputService::~MidiInputService()
     close();
 }
 
+QString MidiInputService::backendName() const
+{
+#ifdef Q_OS_WIN
+    return QStringLiteral("WinMM");
+#else
+    return QStringLiteral("Unavailable");
+#endif
+}
+
 void MidiInputService::refreshPorts()
 {
 #ifdef Q_OS_WIN
