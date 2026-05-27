@@ -40,6 +40,13 @@ class PianoController : public QObject {
     Q_PROPERTY(QAbstractListModel* localSheetModel READ localSheetModel CONSTANT)
     Q_PROPERTY(QString localMidiLibraryPath READ localMidiLibraryPath NOTIFY localMidiLibraryChanged)
     Q_PROPERTY(QVariantMap practiceReport READ practiceReport NOTIFY practiceReportChanged)
+    Q_PROPERTY(bool loopPracticeEnabled READ loopPracticeEnabled NOTIFY loopPracticeChanged)
+    Q_PROPERTY(bool loopRangeValid READ loopRangeValid NOTIFY loopPracticeChanged)
+    Q_PROPERTY(double loopStartBeat READ loopStartBeat NOTIFY loopPracticeChanged)
+    Q_PROPERTY(double loopEndBeat READ loopEndBeat NOTIFY loopPracticeChanged)
+    Q_PROPERTY(int loopCorrectPasses READ loopCorrectPasses NOTIFY loopPracticeChanged)
+    Q_PROPERTY(int loopMistakes READ loopMistakes NOTIFY loopPracticeChanged)
+    Q_PROPERTY(QString loopStatus READ loopStatus NOTIFY loopPracticeChanged)
 
 public:
     explicit PianoController(QObject *parent = nullptr);
@@ -65,6 +72,13 @@ public:
     QAbstractListModel *localSheetModel() { return &m_localSheetModel; }
     QString localMidiLibraryPath() const { return m_localMidiLibraryPath; }
     QVariantMap practiceReport() const { return m_practiceReport; }
+    bool loopPracticeEnabled() const { return m_loopPracticeEnabled; }
+    bool loopRangeValid() const;
+    double loopStartBeat() const;
+    double loopEndBeat() const;
+    int loopCorrectPasses() const { return m_loopCorrectPasses; }
+    int loopMistakes() const { return m_loopMistakes; }
+    QString loopStatus() const;
     const QVector<NoteEvent> &noteEvents() const { return m_notes; }
     qint64 currentTickValue() const { return m_playbackEngine.currentTick(); }
     qint64 totalTickValue() const { return m_playbackEngine.totalTicks(); }
@@ -86,6 +100,10 @@ public slots:
     Q_INVOKABLE void refreshLocalMidiLibrary();
     Q_INVOKABLE void loadLocalMidi(int index);
     Q_INVOKABLE void openLocalMidiLibrary();
+    Q_INVOKABLE void setLoopStartAtCurrent();
+    Q_INVOKABLE void setLoopEndAtCurrent();
+    Q_INVOKABLE void toggleLoopPractice();
+    Q_INVOKABLE void clearLoopPractice();
 
 signals:
     void songChanged();
@@ -104,6 +122,7 @@ signals:
     void volumeChanged();
     void localMidiLibraryChanged();
     void practiceReportChanged();
+    void loopPracticeChanged();
 
 private slots:
     void onFrame();
@@ -122,12 +141,23 @@ private:
     void setStatusMessage(const QString &message);
     bool isPracticeMode() const;
     bool isRhythmPracticeMode() const;
-    qint64 rhythmToleranceTick() const;
+    RhythmTimingWindows rhythmTimingWindows() const;
+    qint64 rhythmWindowTick(int windowMs) const;
     void beginPracticeSession();
     void appendPracticeEvent(const PracticeNoteResult &result);
     void finishPracticeSession(bool completed);
     void refreshPracticeReport();
     QVariantMap practiceReportToVariant(const PracticeReportSummary &report) const;
+    qint64 loopStartTick() const;
+    qint64 loopEndTick() const;
+    bool tickInsideLoop(qint64 tick) const;
+    void resetLoopProgress();
+    void resetLoopSegmentBaseline();
+    void seekToLoopStart(bool resetStats);
+    bool shouldFinishLoopAt(qint64 tick) const;
+    void finishLoopIteration();
+    bool registerLoopJudgement(const PracticeNoteResult &result);
+    void adjustLoopSpeed(int delta, const QString &reason);
     void retriggerAutoNoteStarts(qint64 previousTick, qint64 currentTick);
     qint64 beatToTick(double beat) const;
     double tickToBeat(qint64 tick) const;
@@ -156,6 +186,15 @@ private:
     LocalSheetModel m_localSheetModel;
     qint64 m_currentSheetId = -1;
     QVariantMap m_practiceReport;
+
+    bool m_loopStartSet = false;
+    bool m_loopEndSet = false;
+    bool m_loopPracticeEnabled = false;
+    qint64 m_loopStartTick = 0;
+    qint64 m_loopEndTick = 0;
+    int m_loopCorrectPasses = 0;
+    int m_loopMistakes = 0;
+    int m_loopSegmentMistakeBase = 0;
 
     QString m_statusMessage;
     qint64 m_positionNotifyAccumulatorMs = 0;

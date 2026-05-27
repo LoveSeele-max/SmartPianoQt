@@ -7,6 +7,8 @@
 
 enum class PracticeJudgeType {
     Ignored,
+    Perfect,
+    Good,
     Correct,
     RepeatedNote,
     WrongNote,
@@ -31,6 +33,12 @@ struct PracticeNoteResult {
     qint64 nextTick = -1;
 };
 
+struct RhythmTimingWindows {
+    qint64 perfectTick = 0;
+    qint64 goodTick = 0;
+    qint64 hitTick = 0;
+};
+
 struct PracticeStep {
     qint64 tick = 0;
     QVector<NoteEvent> notes;
@@ -47,9 +55,12 @@ public:
     QVector<NoteEvent> expectedNotes() const;
     bool hasExpectedNotes() const;
     PracticeNoteResult noteOn(int midi, int velocity);
-    PracticeNoteResult noteOnRhythm(int midi, int velocity, qint64 actualTick, qint64 toleranceTick);
-    QVector<PracticeNoteResult> noteOnRhythmDetailed(int midi, int velocity, qint64 actualTick, qint64 toleranceTick);
-    QVector<PracticeNoteResult> markMissedUntil(qint64 actualTick, qint64 toleranceTick);
+    PracticeNoteResult noteOnRhythm(int midi, int velocity, qint64 actualTick, const RhythmTimingWindows &windows);
+    QVector<PracticeNoteResult> noteOnRhythmDetailed(int midi,
+                                                     int velocity,
+                                                     qint64 actualTick,
+                                                     const RhythmTimingWindows &windows);
+    QVector<PracticeNoteResult> markMissedUntil(qint64 actualTick, const RhythmTimingWindows &windows);
 
     int correctCount() const { return m_correctCount; }
     int wrongCount() const { return m_wrongCount; }

@@ -123,10 +123,54 @@ ColumnLayout {
             onMoved: piano.seekBeat(value)
         }
 
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 6
+
+            Button {
+                text: "设为 A"
+                Layout.fillWidth: true
+                onClicked: piano.setLoopStartAtCurrent()
+            }
+
+            Button {
+                text: "设为 B"
+                Layout.fillWidth: true
+                onClicked: piano.setLoopEndAtCurrent()
+            }
+
+            Button {
+                text: piano.loopPracticeEnabled ? "停止循环" : "循环练习"
+                Layout.fillWidth: true
+                enabled: piano.loopRangeValid || piano.loopPracticeEnabled
+                highlighted: piano.loopPracticeEnabled
+                onClicked: piano.toggleLoopPractice()
+            }
+        }
+
         Label {
             text: piano.currentBeat.toFixed(1) + " / " + piano.totalBeats.toFixed(1) + " beats"
             color: "#d4d4d8"
             font.pixelSize: 12
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+
+            Label {
+                Layout.fillWidth: true
+                text: piano.loopStatus
+                color: piano.loopPracticeEnabled ? "#86efac" : "#a1a1aa"
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+
+            Button {
+                text: "清除"
+                enabled: piano.loopRangeValid || piano.loopPracticeEnabled
+                onClicked: piano.clearLoopPractice()
+            }
         }
     }
 }

@@ -65,7 +65,10 @@ struct PracticeMistakeStat {
 
 struct PracticeReportSummary {
     QVector<PracticeSessionRecord> recentSessions;
+    QVector<PracticeSessionRecord> scoreTrend;
     QVector<PracticeMistakeStat> mistakeStats;
+    QVector<PracticeMistakeStat> topWrongNotes;
+    QVector<PracticeMistakeStat> topMissedNotes;
     int sessionCount = 0;
     int averageScore = 0;
     int totalCorrect = 0;
@@ -125,6 +128,11 @@ private:
     bool ensureColumn(const QString &table, const QString &column, const QString &definition);
     QString defaultDatabasePath() const;
     QString sheetHash(const Song &song) const;
+    QVector<PracticeMistakeStat> mistakeStatsForResult(qint64 sheetId,
+                                                       const QString &result,
+                                                       int limit,
+                                                       bool completedOnly,
+                                                       const QString &mode);
     void setLastError(const QString &message);
 
     QString m_connectionName;

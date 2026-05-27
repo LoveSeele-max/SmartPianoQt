@@ -514,42 +514,64 @@ void testPracticeEngineSeekAndReset()
 
 void testPracticeEngineRhythmJudging()
 {
+    RhythmTimingWindows windows;
+    windows.perfectTick = 50;
+    windows.goodTick = 100;
+    windows.hitTick = 180;
+
     PracticeEngine practice;
     practice.setSong({ makeNote(60, 480), makeNote(62, 960) });
 
-    const PracticeNoteResult early = practice.noteOnRhythm(60, 90, 360, 60);
-    expect(early.type == PracticeJudgeType::Early, "rhythm judging should detect early input");
-    expect(early.timingOffsetTick == -120, "early result should preserve timing offset");
-    expect(practice.wrongCount() == 1, "early input should count as a wrong attempt");
+    const PracticeNoteResult tooEarly = practice.noteOnRhythm(60, 90, 250, windows);
+    expect(tooEarly.type == PracticeJudgeType::Early, "rhythm judging should reject notes before the hit window as early");
+    expect(!tooEarly.stepComplete, "too-early input should not consume the expected note");
+    expect(practice.expectedTick() == 480, "too-early input should keep the same rhythm step available");
 
-    const PracticeNoteResult correct = practice.noteOnRhythm(60, 90, 500, 60);
-    expect(correct.type == PracticeJudgeType::Correct, "rhythm judging should accept notes inside tolerance");
-    expect(correct.stepComplete, "single rhythm note should complete its step");
-    expect(correct.nextTick == 960, "rhythm completion should advance to the next step");
+    practice.reset(true);
+    const PracticeNoteResult perfect = practice.noteOnRhythm(60, 90, 520, windows);
+    expect(perfect.type == PracticeJudgeType::Perfect, "rhythm judging should grade tight timing as perfect");
+    expect(perfect.countedCorrect, "perfect rhythm notes should count as correct");
+    expect(perfect.stepComplete, "single perfect rhythm note should complete its step");
+    expect(perfect.nextTick == 960, "perfect rhythm completion should advance to the next step");
 
-    const QVector<PracticeNoteResult> missed = practice.markMissedUntil(1100, 60);
+    const QVector<PracticeNoteResult> missed = practice.markMissedUntil(1141, windows);
     expect(missed.size() == 1, "rhythm mode should produce missed events for overdue notes");
     expect(missed.at(0).type == PracticeJudgeType::Missed, "overdue notes should be marked missed");
     expect(missed.at(0).expectedMidi == 62, "missed event should preserve expected pitch");
     expect(practice.missedCount() == 1, "missed rhythm notes should update missed count");
 
+    PracticeEngine goodPractice;
+    goodPractice.setSong({ makeNote(60, 480) });
+    const PracticeNoteResult good = goodPractice.noteOnRhythm(60, 90, 560, windows);
+    expect(good.type == PracticeJudgeType::Good, "rhythm judging should grade medium timing as good");
+    expect(good.countedCorrect, "good rhythm notes should count as correct");
+
+    PracticeEngine earlyPractice;
+    earlyPractice.setSong({ makeNote(60, 480), makeNote(62, 960) });
+    const PracticeNoteResult early = earlyPractice.noteOnRhythm(60, 90, 340, windows);
+    expect(early.type == PracticeJudgeType::Early, "rhythm judging should grade in-window negative offsets as early");
+    expect(early.stepComplete, "in-window early input should consume the step");
+    expect(early.nextTick == 960, "in-window early input should advance to the next step");
+    expect(earlyPractice.wrongCount() == 1, "early timing should count as a timing mistake");
+
+    PracticeEngine latePractice;
+    latePractice.setSong({ makeNote(60, 480), makeNote(62, 960) });
+    const PracticeNoteResult late = latePractice.noteOnRhythm(60, 90, 620, windows);
+    expect(late.type == PracticeJudgeType::Late, "rhythm judging should grade in-window positive offsets as late");
+    expect(late.stepComplete, "in-window late input should consume the step");
+    expect(late.nextTick == 960, "in-window late input should advance to the next step");
+    expect(latePractice.wrongCount() == 1, "late timing should count as a timing mistake");
+
     PracticeEngine chordPractice;
     chordPractice.setSong({ makeNote(64, 480), makeNote(67, 480), makeNote(69, 960) });
-    const QVector<PracticeNoteResult> lateChord = chordPractice.noteOnRhythmDetailed(64, 90, 620, 60);
-    expect(lateChord.size() == 2, "late rhythm chord input should produce per-note results");
-    expect(lateChord.at(0).type == PracticeJudgeType::Late, "late chord hit should be reported as late");
-    expect(lateChord.at(0).expectedMidi == 64, "late chord hit should preserve the played expected pitch");
-    expect(lateChord.at(1).type == PracticeJudgeType::Missed, "unplayed chord members should be recorded as missed");
-    expect(lateChord.at(1).expectedMidi == 67, "missed chord member should preserve its expected pitch");
-    expect(lateChord.last().stepComplete, "late chord detail should complete the overdue step");
-    expect(chordPractice.missedCount() == 2, "late chord detail should count late and missed notes individually");
-
-    PracticeEngine legacyLatePractice;
-    legacyLatePractice.setSong({ makeNote(64, 480), makeNote(67, 480), makeNote(69, 960) });
-    const PracticeNoteResult legacyLate = legacyLatePractice.noteOnRhythm(64, 90, 620, 60);
-    expect(legacyLate.type == PracticeJudgeType::Late, "legacy rhythm API should keep late as the primary result");
-    expect(legacyLate.stepComplete, "legacy rhythm API should preserve step completion for late chords");
-    expect(legacyLate.nextTick == 960, "legacy rhythm API should preserve the next tick for late chords");
+    const QVector<PracticeNoteResult> missedChord = chordPractice.noteOnRhythmDetailed(64, 90, 700, windows);
+    expect(missedChord.size() == 2, "over-window chord input should produce per-note missed results");
+    expect(missedChord.at(0).type == PracticeJudgeType::Missed, "over-window chord members should be marked missed");
+    expect(missedChord.at(0).expectedMidi == 64, "missed chord should preserve the first expected pitch");
+    expect(missedChord.at(1).type == PracticeJudgeType::Missed, "all unplayed chord members should be recorded as missed");
+    expect(missedChord.at(1).expectedMidi == 67, "missed chord member should preserve its expected pitch");
+    expect(missedChord.last().stepComplete, "missed chord detail should complete the overdue step");
+    expect(chordPractice.missedCount() == 2, "missed chord detail should count each missed note individually");
 }
 
 void testMidiInputMessageFiltering()
@@ -577,6 +599,10 @@ void testPracticeRecordStore()
 
     PracticeRecordStore store;
     expect(store.open(dbPath), "PracticeRecordStore should open a SQLite database");
+    expect(PracticeRecordStore::judgeTypeToString(PracticeJudgeType::Perfect) == QStringLiteral("perfect"),
+           "PracticeRecordStore should persist perfect timing labels");
+    expect(PracticeRecordStore::judgeTypeToString(PracticeJudgeType::Good) == QStringLiteral("good"),
+           "PracticeRecordStore should persist good timing labels");
 
     Song song = makePlaybackSong();
     const qint64 sheetId = store.upsertSheet(song, QStringLiteral("test.mid"), QStringLiteral("midi"));
@@ -626,12 +652,35 @@ void testPracticeRecordStore()
     const qint64 secondSessionId = store.beginSession(sheetId, secondStart);
     expect(secondSessionId > 0, "PracticeRecordStore should begin a second practice session");
 
+    PracticeEventRecord secondWrongEvent;
+    secondWrongEvent.result = PracticeJudgeType::WrongNote;
+    secondWrongEvent.expectedMidi = 62;
+    secondWrongEvent.actualMidi = 61;
+    secondWrongEvent.velocity = 76;
+    secondWrongEvent.expectedTick = 960;
+    secondWrongEvent.actualTick = 970;
+    secondWrongEvent.offsetMs = 10;
+    expect(store.appendEvent(secondSessionId, secondWrongEvent), "PracticeRecordStore should append repeated mistake events");
+
+    PracticeEventRecord missedEvent;
+    missedEvent.result = PracticeJudgeType::Missed;
+    missedEvent.expectedMidi = 64;
+    missedEvent.velocity = 0;
+    missedEvent.expectedTick = 1440;
+    missedEvent.actualTick = 1540;
+    missedEvent.offsetMs = 104;
+    expect(store.appendEvent(secondSessionId, missedEvent), "PracticeRecordStore should append missed-note events");
+    missedEvent.expectedTick = 1920;
+    missedEvent.actualTick = 2020;
+    expect(store.appendEvent(secondSessionId, missedEvent), "PracticeRecordStore should append repeated missed-note events");
+
     PracticeSessionSummary secondSummary;
     secondSummary.completed = false;
     secondSummary.endTick = 480;
     secondSummary.activeDurationSeconds = 3;
     secondSummary.correctCount = 0;
     secondSummary.wrongCount = 1;
+    secondSummary.missedCount = 2;
     expect(store.finishSession(secondSessionId, secondSummary), "PracticeRecordStore should finish a filtered practice session");
 
     const QVector<PracticeSessionRecord> recent = store.recentSessions(3, sheetId);
@@ -645,14 +694,49 @@ void testPracticeRecordStore()
     expect(completedRhythm.at(0).score == 50, "filtered recent session should expose calculated score");
 
     const QVector<PracticeMistakeStat> mistakes = store.mistakeStatsForSheet(sheetId, 3);
-    expect(mistakes.size() == 1, "PracticeRecordStore should query mistake stats for a sheet");
+    expect(mistakes.size() == 2, "PracticeRecordStore should query mistake stats for a sheet");
     expect(mistakes.at(0).midi == 62, "mistake stats should group by expected pitch");
-    expect(mistakes.at(0).wrongCount == 1, "mistake stats should count wrong notes");
+    expect(mistakes.at(0).wrongCount == 2, "mistake stats should count wrong notes");
+    expect(mistakes.at(1).midi == 64, "mistake stats should include missed-note pitch groups");
+    expect(mistakes.at(1).missedCount == 2, "mistake stats should count missed notes");
+
+    auto addTrendSession = [&](int correct, int wrong, int missed) {
+        PracticeSessionStart trendStart;
+        trendStart.mode = QStringLiteral("practice");
+        trendStart.playbackSpeed = 100;
+        trendStart.startTick = 0;
+        const qint64 trendSessionId = store.beginSession(sheetId, trendStart);
+        expect(trendSessionId > 0, "PracticeRecordStore should begin trend practice sessions");
+
+        PracticeSessionSummary trendSummary;
+        trendSummary.completed = false;
+        trendSummary.endTick = 480;
+        trendSummary.activeDurationSeconds = 4;
+        trendSummary.correctCount = correct;
+        trendSummary.wrongCount = wrong;
+        trendSummary.missedCount = missed;
+        expect(store.finishSession(trendSessionId, trendSummary), "PracticeRecordStore should finish trend practice sessions");
+    };
+    addTrendSession(2, 0, 0);
+    addTrendSession(1, 1, 0);
+    addTrendSession(3, 0, 0);
+    addTrendSession(0, 1, 0);
 
     const PracticeReportSummary report = store.reportForSheet(sheetId, 3, 3);
-    expect(report.sessionCount == 2, "PracticeRecordStore report should count sessions");
-    expect(report.averageScore == 25, "PracticeRecordStore report should average scores");
-    expect(report.totalWrong == 2, "PracticeRecordStore report should aggregate wrong notes");
+    expect(report.sessionCount == 6, "PracticeRecordStore report should count sessions");
+    expect(report.averageScore == 50, "PracticeRecordStore report should average scores");
+    expect(report.totalWrong == 4, "PracticeRecordStore report should aggregate wrong notes");
+    expect(report.totalMissed == 2, "PracticeRecordStore report should aggregate missed notes");
+    expect(report.scoreTrend.size() == 5, "PracticeRecordStore report should expose the latest five-score trend");
+    expect(report.scoreTrend.at(0).score == 0, "score trend should be chronological after trimming old sessions");
+    expect(report.scoreTrend.at(1).score == 100, "score trend should preserve the second latest trend score");
+    expect(report.scoreTrend.last().score == 0, "score trend should end with the newest session");
+    expect(report.topWrongNotes.size() == 1, "PracticeRecordStore report should expose top wrong notes");
+    expect(report.topWrongNotes.at(0).midi == 62, "top wrong notes should rank by wrong-note count");
+    expect(report.topWrongNotes.at(0).wrongCount == 2, "top wrong notes should expose wrong-note totals");
+    expect(report.topMissedNotes.size() == 1, "PracticeRecordStore report should expose top missed notes");
+    expect(report.topMissedNotes.at(0).midi == 64, "top missed notes should rank by missed-note count");
+    expect(report.topMissedNotes.at(0).missedCount == 2, "top missed notes should expose missed-note totals");
 
     const PracticeReportSummary completedReport = store.reportForSheet(
         sheetId, 3, 3, true, QStringLiteral("rhythm"));

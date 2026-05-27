@@ -59,6 +59,41 @@ double PianoController::totalBeats() const
     return m_playbackEngine.totalBeats();
 }
 
+bool PianoController::loopRangeValid() const
+{
+    return m_loopStartSet && m_loopEndSet && m_loopEndTick > m_loopStartTick;
+}
+
+double PianoController::loopStartBeat() const
+{
+    return m_loopStartSet ? tickToBeat(m_loopStartTick) : 0.0;
+}
+
+double PianoController::loopEndBeat() const
+{
+    return m_loopEndSet ? tickToBeat(m_loopEndTick) : 0.0;
+}
+
+QString PianoController::loopStatus() const
+{
+    if (!m_loopStartSet && !m_loopEndSet) {
+        return QStringLiteral("先设置 A/B 点");
+    }
+    if (!loopRangeValid()) {
+        return QStringLiteral("A/B 区间无效，B 点需要晚于 A 点");
+    }
+
+    const QString range = QStringLiteral("A %1 / B %2")
+                              .arg(loopStartBeat(), 0, 'f', 1)
+                              .arg(loopEndBeat(), 0, 'f', 1);
+    if (!m_loopPracticeEnabled) {
+        return range + QStringLiteral("  未开启");
+    }
+    return range + QStringLiteral("  全对 %1/3  错误 %2/2")
+                       .arg(m_loopCorrectPasses)
+                       .arg(m_loopMistakes);
+}
+
 QVariantList PianoController::notes() const
 {
     QVariantList list;
@@ -155,6 +190,11 @@ void PianoController::playPause()
 
     if (m_playbackEngine.currentTick() >= m_playbackEngine.totalTicks()) {
         seekBeat(0);
+    }
+
+    if (m_loopPracticeEnabled && loopRangeValid() &&
+        !tickInsideLoop(m_playbackEngine.currentTick())) {
+        seekToLoopStart(false);
     }
 
     if (isPracticeMode()) {
@@ -317,6 +357,66 @@ void PianoController::openLocalMidiLibrary()
     MidiLibraryService::openLibrary(m_localMidiLibraryPath);
 }
 
+void PianoController::setLoopStartAtCurrent()
+{
+    m_loopStartTick = qBound<qint64>(0, m_playbackEngine.currentTick(), m_playbackEngine.totalTicks());
+    m_loopStartSet = true;
+    if (m_loopPracticeEnabled && !loopRangeValid()) {
+        m_loopPracticeEnabled = false;
+        resetLoopProgress();
+    }
+    setStatusMessage(QStringLiteral("已设置循环 A 点：%1 拍").arg(loopStartBeat(), 0, 'f', 1));
+    emit loopPracticeChanged();
+}
+
+void PianoController::setLoopEndAtCurrent()
+{
+    m_loopEndTick = qBound<qint64>(0, m_playbackEngine.currentTick(), m_playbackEngine.totalTicks());
+    m_loopEndSet = true;
+    if (m_loopPracticeEnabled && !loopRangeValid()) {
+        m_loopPracticeEnabled = false;
+        resetLoopProgress();
+    }
+    setStatusMessage(QStringLiteral("已设置循环 B 点：%1 拍").arg(loopEndBeat(), 0, 'f', 1));
+    emit loopPracticeChanged();
+}
+
+void PianoController::toggleLoopPractice()
+{
+    if (m_loopPracticeEnabled) {
+        m_loopPracticeEnabled = false;
+        resetLoopProgress();
+        setStatusMessage(QStringLiteral("循环练习已关闭"));
+        emit loopPracticeChanged();
+        return;
+    }
+
+    if (!loopRangeValid()) {
+        setStatusMessage(QStringLiteral("请先设置有效的 A/B 循环区间"));
+        emit loopPracticeChanged();
+        return;
+    }
+
+    m_loopPracticeEnabled = true;
+    resetLoopProgress();
+    seekToLoopStart(false);
+    resetLoopSegmentBaseline();
+    setStatusMessage(QStringLiteral("循环练习已开启：%1").arg(loopStatus()));
+    emit loopPracticeChanged();
+}
+
+void PianoController::clearLoopPractice()
+{
+    m_loopPracticeEnabled = false;
+    m_loopStartSet = false;
+    m_loopEndSet = false;
+    m_loopStartTick = 0;
+    m_loopEndTick = 0;
+    resetLoopProgress();
+    setStatusMessage(QStringLiteral("已清除 A/B 循环区间"));
+    emit loopPracticeChanged();
+}
+
 void PianoController::onFrame()
 {
     if (!m_playing) return;
@@ -324,15 +424,35 @@ void PianoController::onFrame()
 
     if (m_mode == QStringLiteral("auto") || isRhythmPracticeMode()) {
         const PlaybackAdvanceResult result = m_playbackEngine.advance(elapsedMs);
+        const bool loopBoundaryReached = m_loopPracticeEnabled && loopRangeValid() &&
+            result.currentTick >= loopEndTick();
+        const qint64 effectiveTick = loopBoundaryReached ? loopEndTick() : result.currentTick;
+
         if (isRhythmPracticeMode()) {
-            handleRhythmMisses(result.currentTick);
+            const RhythmTimingWindows windows = rhythmTimingWindows();
+            handleRhythmMisses(loopBoundaryReached
+                                   ? effectiveTick + windows.hitTick
+                                   : effectiveTick);
+        }
+
+        if (loopBoundaryReached) {
+            if (m_mode == QStringLiteral("auto")) {
+                retriggerAutoNoteStarts(result.previousTick, effectiveTick);
+            }
+            m_playbackEngine.seekTick(effectiveTick);
+            finishLoopIteration();
+            emit positionChanged();
+            emit frameChanged();
+            refreshActiveNotes();
+            return;
         }
 
         if (result.reachedEnd) {
             if (m_mode == QStringLiteral("auto")) {
                 retriggerAutoNoteStarts(result.previousTick, result.currentTick);
             } else {
-                handleRhythmMisses(result.currentTick + rhythmToleranceTick() + 1);
+                const RhythmTimingWindows windows = rhythmTimingWindows();
+                handleRhythmMisses(result.currentTick + windows.hitTick + 1);
                 finishPracticeSession(true);
             }
             setPlaying(false);
@@ -392,6 +512,12 @@ void PianoController::setSong(Song song, const QString &sourcePath, const QStrin
 
     m_practice.setSong(m_notes);
     resetPracticeState(true, true);
+    m_loopPracticeEnabled = false;
+    m_loopStartSet = false;
+    m_loopEndSet = false;
+    m_loopStartTick = 0;
+    m_loopEndTick = 0;
+    resetLoopProgress();
     refreshActiveNotes();
 
     emit songChanged();
@@ -399,6 +525,7 @@ void PianoController::setSong(Song song, const QString &sourcePath, const QStrin
     emit notesChanged();
     emit positionChanged();
     emit practiceChanged();
+    emit loopPracticeChanged();
     refreshLocalMidiLibrary();
     refreshPracticeReport();
 }
@@ -459,7 +586,7 @@ void PianoController::evaluatePracticeNote(int midi, int velocity)
     QVector<PracticeNoteResult> results;
     if (isRhythmPracticeMode()) {
         results = m_practice.noteOnRhythmDetailed(
-            midi, velocity, m_playbackEngine.currentTick(), rhythmToleranceTick());
+            midi, velocity, m_playbackEngine.currentTick(), rhythmTimingWindows());
     } else {
         const PracticeNoteResult result = m_practice.noteOn(midi, velocity);
         if (result.type != PracticeJudgeType::Ignored) {
@@ -469,9 +596,11 @@ void PianoController::evaluatePracticeNote(int midi, int velocity)
     if (results.isEmpty()) return;
 
     bool anyStatsChanged = false;
+    bool loopSpeedAdjusted = false;
     const PracticeNoteResult *completion = nullptr;
     for (const PracticeNoteResult &item : results) {
         appendPracticeEvent(item);
+        loopSpeedAdjusted = registerLoopJudgement(item) || loopSpeedAdjusted;
         anyStatsChanged = anyStatsChanged || item.statsChanged;
         if (item.stepComplete) {
             completion = &item;
@@ -481,19 +610,30 @@ void PianoController::evaluatePracticeNote(int midi, int velocity)
     const PracticeNoteResult &result = results.first();
 
     if (result.type == PracticeJudgeType::WrongNote) {
-        setStatusMessage(QStringLiteral("错音：%1").arg(NoteUtils::midiToName(midi)));
+        if (!loopSpeedAdjusted) {
+            setStatusMessage(QStringLiteral("错音：%1").arg(NoteUtils::midiToName(midi)));
+        }
         if (anyStatsChanged) emit statsChanged();
         return;
+    }
+
+    if ((result.type == PracticeJudgeType::Perfect || result.type == PracticeJudgeType::Good) &&
+        !loopSpeedAdjusted) {
+        setStatusMessage(QStringLiteral("%1：%2")
+                             .arg(result.type == PracticeJudgeType::Perfect
+                                      ? QStringLiteral("Perfect")
+                                      : QStringLiteral("Good"),
+                                  NoteUtils::midiToName(midi)));
     }
 
     if (result.type == PracticeJudgeType::Early) {
-        setStatusMessage(QStringLiteral("太早：%1").arg(NoteUtils::midiToName(midi)));
-        if (anyStatsChanged) emit statsChanged();
-        return;
+        if (!loopSpeedAdjusted) {
+            setStatusMessage(QStringLiteral("偏早：%1").arg(NoteUtils::midiToName(midi)));
+        }
     }
 
-    if (result.type == PracticeJudgeType::Late) {
-        setStatusMessage(QStringLiteral("稍晚：%1").arg(NoteUtils::midiToName(midi)));
+    if (result.type == PracticeJudgeType::Late && !loopSpeedAdjusted) {
+        setStatusMessage(QStringLiteral("偏晚：%1").arg(NoteUtils::midiToName(midi)));
     } else if (result.type == PracticeJudgeType::RepeatedNote) {
         setStatusMessage(QStringLiteral("重复音：%1").arg(NoteUtils::midiToName(midi)));
     }
@@ -507,7 +647,13 @@ void PianoController::evaluatePracticeNote(int midi, int velocity)
             if (note.startTick == completion->completedTick) note.played = true;
         }
 
-        if (completion->songComplete) {
+        const qint64 nextTick = completion->songComplete
+            ? m_playbackEngine.totalTicks()
+            : completion->nextTick;
+        if (m_loopPracticeEnabled && loopRangeValid() && shouldFinishLoopAt(nextTick)) {
+            finishLoopIteration();
+            emit positionChanged();
+        } else if (completion->songComplete) {
             m_playbackEngine.seekTick(m_playbackEngine.totalTicks());
             setPlaying(false);
             finishPracticeSession(true);
@@ -519,8 +665,17 @@ void PianoController::evaluatePracticeNote(int midi, int velocity)
             setStatusMessage(QStringLiteral("节奏正确"));
         }
         emit positionChanged();
-    } else if (result.type == PracticeJudgeType::Correct) {
-        setStatusMessage(QStringLiteral("很好，还差当前和弦里的其他音"));
+    } else if (result.type == PracticeJudgeType::Correct ||
+               result.type == PracticeJudgeType::Perfect ||
+               result.type == PracticeJudgeType::Good) {
+        if (result.type == PracticeJudgeType::Perfect || result.type == PracticeJudgeType::Good) {
+            setStatusMessage(QStringLiteral("%1，还差当前和弦里的其他音")
+                                 .arg(result.type == PracticeJudgeType::Perfect
+                                          ? QStringLiteral("Perfect")
+                                          : QStringLiteral("Good")));
+        } else {
+            setStatusMessage(QStringLiteral("很好，还差当前和弦里的其他音"));
+        }
     }
 
     emit notesChanged();
@@ -529,11 +684,13 @@ void PianoController::evaluatePracticeNote(int midi, int velocity)
 
 void PianoController::handleRhythmMisses(qint64 currentTick)
 {
-    const QVector<PracticeNoteResult> missed = m_practice.markMissedUntil(currentTick, rhythmToleranceTick());
+    const QVector<PracticeNoteResult> missed = m_practice.markMissedUntil(currentTick, rhythmTimingWindows());
     if (missed.isEmpty()) return;
 
+    bool loopSpeedAdjusted = false;
     for (const PracticeNoteResult &result : missed) {
         appendPracticeEvent(result);
+        loopSpeedAdjusted = registerLoopJudgement(result) || loopSpeedAdjusted;
         for (auto &note : m_notes) {
             if (note.startTick == result.completedTick && note.midi == result.expectedMidi) {
                 note.played = true;
@@ -544,7 +701,9 @@ void PianoController::handleRhythmMisses(qint64 currentTick)
     emit statsChanged();
     emit notesChanged();
     emit practiceChanged();
-    setStatusMessage(QStringLiteral("漏弹：%1").arg(NoteUtils::midiToName(missed.last().expectedMidi)));
+    if (!loopSpeedAdjusted) {
+        setStatusMessage(QStringLiteral("漏弹：%1").arg(NoteUtils::midiToName(missed.last().expectedMidi)));
+    }
 }
 
 void PianoController::resetPracticeState(bool resetStats, bool resetPlayed)
@@ -636,9 +795,27 @@ bool PianoController::isRhythmPracticeMode() const
     return m_mode == QStringLiteral("rhythm");
 }
 
-qint64 PianoController::rhythmToleranceTick() const
+RhythmTimingWindows PianoController::rhythmTimingWindows() const
 {
-    return qMax<qint64>(m_playbackEngine.ppq() / 6, 1);
+    RhythmTimingWindows windows;
+    windows.perfectTick = rhythmWindowTick(50);
+    windows.goodTick = qMax(windows.perfectTick, rhythmWindowTick(100));
+    windows.hitTick = qMax(windows.goodTick, rhythmWindowTick(180));
+    return windows;
+}
+
+qint64 PianoController::rhythmWindowTick(int windowMs) const
+{
+    const qint64 anchorTick = m_practice.expectedTick() >= 0
+        ? m_practice.expectedTick()
+        : m_playbackEngine.currentTick();
+    const double playbackRate = qMax(0.01, double(m_playbackEngine.playbackSpeed()) / 100.0);
+    const qint64 sourceMs = qMax<qint64>(1, qRound64(double(windowMs) * playbackRate));
+    const double targetTick = PlaybackClock::advance(double(anchorTick),
+                                                     sourceMs,
+                                                     m_playbackEngine.tempos(),
+                                                     m_playbackEngine.ppq());
+    return qMax<qint64>(1, qRound64(targetTick - double(anchorTick)));
 }
 
 void PianoController::beginPracticeSession()
@@ -675,36 +852,7 @@ void PianoController::refreshPracticeReport()
 
 QVariantMap PianoController::practiceReportToVariant(const PracticeReportSummary &report) const
 {
-    QVariantMap map;
-    map.insert(QStringLiteral("hasData"), report.sessionCount > 0);
-    map.insert(QStringLiteral("sessionCount"), report.sessionCount);
-    map.insert(QStringLiteral("averageScore"), report.averageScore);
-    map.insert(QStringLiteral("totalCorrect"), report.totalCorrect);
-    map.insert(QStringLiteral("totalWrong"), report.totalWrong);
-    map.insert(QStringLiteral("totalMissed"), report.totalMissed);
-
-    QVariantMap latest;
-    if (!report.recentSessions.isEmpty()) {
-        const PracticeSessionRecord &session = report.recentSessions.first();
-        latest.insert(QStringLiteral("id"), session.id);
-        latest.insert(QStringLiteral("mode"), session.mode);
-        latest.insert(QStringLiteral("score"), session.score);
-        latest.insert(QStringLiteral("completed"), session.completed);
-        latest.insert(QStringLiteral("correct"), session.correctCount);
-        latest.insert(QStringLiteral("wrong"), session.wrongCount);
-        latest.insert(QStringLiteral("missed"), session.missedCount);
-        latest.insert(QStringLiteral("durationSeconds"), session.durationSeconds);
-        latest.insert(QStringLiteral("activeDurationSeconds"), session.activeDurationSeconds);
-        const QDateTime started = QDateTime::fromString(session.startedAt, Qt::ISODateWithMs);
-        latest.insert(QStringLiteral("startedAt"),
-                      started.isValid() ? started.toLocalTime().toString(QStringLiteral("MM-dd HH:mm"))
-                                        : session.startedAt);
-    }
-    map.insert(QStringLiteral("latest"), latest);
-
-    QVariantList sessions;
-    sessions.reserve(report.recentSessions.size());
-    for (const PracticeSessionRecord &session : report.recentSessions) {
+    auto sessionToVariant = [](const PracticeSessionRecord &session) {
         QVariantMap item;
         item.insert(QStringLiteral("id"), session.id);
         item.insert(QStringLiteral("mode"), session.mode);
@@ -719,13 +867,10 @@ QVariantMap PianoController::practiceReportToVariant(const PracticeReportSummary
         item.insert(QStringLiteral("startedAt"),
                     started.isValid() ? started.toLocalTime().toString(QStringLiteral("MM-dd HH:mm"))
                                       : session.startedAt);
-        sessions.push_back(item);
-    }
-    map.insert(QStringLiteral("sessions"), sessions);
+        return item;
+    };
 
-    QVariantList mistakes;
-    mistakes.reserve(report.mistakeStats.size());
-    for (const PracticeMistakeStat &stat : report.mistakeStats) {
+    auto mistakeToVariant = [](const PracticeMistakeStat &stat) {
         QVariantMap item;
         item.insert(QStringLiteral("midi"), stat.midi);
         item.insert(QStringLiteral("note"), stat.noteName);
@@ -734,10 +879,200 @@ QVariantMap PianoController::practiceReportToVariant(const PracticeReportSummary
         item.insert(QStringLiteral("early"), stat.earlyCount);
         item.insert(QStringLiteral("late"), stat.lateCount);
         item.insert(QStringLiteral("total"), stat.totalCount);
-        mistakes.push_back(item);
+        return item;
+    };
+
+    QVariantMap map;
+    map.insert(QStringLiteral("hasData"), report.sessionCount > 0);
+    map.insert(QStringLiteral("sessionCount"), report.sessionCount);
+    map.insert(QStringLiteral("averageScore"), report.averageScore);
+    map.insert(QStringLiteral("totalCorrect"), report.totalCorrect);
+    map.insert(QStringLiteral("totalWrong"), report.totalWrong);
+    map.insert(QStringLiteral("totalMissed"), report.totalMissed);
+
+    QVariantMap latest;
+    if (!report.recentSessions.isEmpty()) {
+        latest = sessionToVariant(report.recentSessions.first());
+    }
+    map.insert(QStringLiteral("latest"), latest);
+
+    QVariantList sessions;
+    sessions.reserve(report.recentSessions.size());
+    for (const PracticeSessionRecord &session : report.recentSessions) {
+        sessions.push_back(sessionToVariant(session));
+    }
+    map.insert(QStringLiteral("sessions"), sessions);
+
+    QVariantList scoreTrend;
+    scoreTrend.reserve(report.scoreTrend.size());
+    for (const PracticeSessionRecord &session : report.scoreTrend) {
+        scoreTrend.push_back(sessionToVariant(session));
+    }
+    map.insert(QStringLiteral("scoreTrend"), scoreTrend);
+
+    QVariantList mistakes;
+    mistakes.reserve(report.mistakeStats.size());
+    for (const PracticeMistakeStat &stat : report.mistakeStats) {
+        mistakes.push_back(mistakeToVariant(stat));
     }
     map.insert(QStringLiteral("mistakes"), mistakes);
+
+    QVariantList topWrongNotes;
+    topWrongNotes.reserve(report.topWrongNotes.size());
+    for (const PracticeMistakeStat &stat : report.topWrongNotes) {
+        topWrongNotes.push_back(mistakeToVariant(stat));
+    }
+    map.insert(QStringLiteral("topWrongNotes"), topWrongNotes);
+
+    QVariantList topMissedNotes;
+    topMissedNotes.reserve(report.topMissedNotes.size());
+    for (const PracticeMistakeStat &stat : report.topMissedNotes) {
+        topMissedNotes.push_back(mistakeToVariant(stat));
+    }
+    map.insert(QStringLiteral("topMissedNotes"), topMissedNotes);
+
+    QString teacherTip = QStringLiteral("完成几次练习后，我会给出更具体的复练建议。");
+    if (report.sessionCount > 0) {
+        if (!report.topWrongNotes.isEmpty()) {
+            const PracticeMistakeStat &stat = report.topWrongNotes.first();
+            teacherTip = QStringLiteral("先慢练 %1：它是最近最常按错的音，目标是连续三次稳定命中。")
+                             .arg(stat.noteName);
+        } else if (!report.topMissedNotes.isEmpty()) {
+            const PracticeMistakeStat &stat = report.topMissedNotes.first();
+            teacherTip = QStringLiteral("注意 %1 的进入时机：它最近最容易漏弹，可以单独放慢练。")
+                             .arg(stat.noteName);
+        } else if (report.averageScore >= 90) {
+            teacherTip = QStringLiteral("整体很稳，可以逐步把速度提高 5%。");
+        } else {
+            teacherTip = QStringLiteral("先保持当前速度，把正确率稳定到 90% 再加速。");
+        }
+    }
+    map.insert(QStringLiteral("teacherTip"), teacherTip);
     return map;
+}
+
+qint64 PianoController::loopStartTick() const
+{
+    return m_loopStartSet ? m_loopStartTick : 0;
+}
+
+qint64 PianoController::loopEndTick() const
+{
+    return m_loopEndSet ? m_loopEndTick : m_playbackEngine.totalTicks();
+}
+
+bool PianoController::tickInsideLoop(qint64 tick) const
+{
+    if (!loopRangeValid()) return true;
+    return tick >= loopStartTick() && tick < loopEndTick();
+}
+
+void PianoController::resetLoopProgress()
+{
+    m_loopCorrectPasses = 0;
+    m_loopMistakes = 0;
+    resetLoopSegmentBaseline();
+}
+
+void PianoController::resetLoopSegmentBaseline()
+{
+    m_loopSegmentMistakeBase = m_practice.wrongCount() + m_practice.missedCount();
+}
+
+void PianoController::seekToLoopStart(bool resetStats)
+{
+    if (!loopRangeValid()) return;
+
+    m_playbackEngine.seekTick(loopStartTick());
+    resetPracticeState(resetStats, true);
+    if (isPracticeMode()) {
+        preparePracticeAtCurrentPosition();
+    }
+
+    const qint64 currentTick = m_playbackEngine.currentTick();
+    for (auto &note : m_notes) {
+        note.played = note.startTick < currentTick;
+    }
+
+    refreshActiveNotes();
+    emit positionChanged();
+    emit notesChanged();
+    emit practiceChanged();
+}
+
+bool PianoController::shouldFinishLoopAt(qint64 tick) const
+{
+    return m_loopPracticeEnabled && loopRangeValid() && tick >= loopEndTick();
+}
+
+void PianoController::finishLoopIteration()
+{
+    if (!m_loopPracticeEnabled || !loopRangeValid()) return;
+
+    const QString previousStatus = m_statusMessage;
+    bool adjustedSpeed = false;
+    if (isPracticeMode()) {
+        const int currentMistakes = m_practice.wrongCount() + m_practice.missedCount();
+        const int segmentMistakes = qMax(0, currentMistakes - m_loopSegmentMistakeBase);
+        if (segmentMistakes == 0) {
+            ++m_loopCorrectPasses;
+            m_loopMistakes = 0;
+            if (m_loopCorrectPasses >= 3) {
+                m_loopCorrectPasses = 0;
+                adjustLoopSpeed(5, QStringLiteral("连续 3 次全对，自动升速"));
+                adjustedSpeed = true;
+            }
+        } else {
+            m_loopCorrectPasses = 0;
+        }
+    }
+
+    seekToLoopStart(false);
+    resetLoopSegmentBaseline();
+    if (!adjustedSpeed && !previousStatus.contains(QStringLiteral("自动降速"))) {
+        setStatusMessage(isPracticeMode()
+                             ? QStringLiteral("已回到 A 点，继续局部练习")
+                             : QStringLiteral("已回到 A 点循环播放"));
+    }
+    emit loopPracticeChanged();
+}
+
+bool PianoController::registerLoopJudgement(const PracticeNoteResult &result)
+{
+    if (!m_loopPracticeEnabled || !loopRangeValid() || !isPracticeMode() || !result.statsChanged) {
+        return false;
+    }
+
+    const bool isMistake = result.type == PracticeJudgeType::WrongNote ||
+        result.type == PracticeJudgeType::Early ||
+        result.type == PracticeJudgeType::Late ||
+        result.type == PracticeJudgeType::Missed;
+    if (!isMistake) return false;
+
+    ++m_loopMistakes;
+    m_loopCorrectPasses = 0;
+    if (m_loopMistakes >= 2) {
+        m_loopMistakes = 0;
+        adjustLoopSpeed(-5, QStringLiteral("错 2 次，自动降速"));
+        return true;
+    }
+    emit loopPracticeChanged();
+    return false;
+}
+
+void PianoController::adjustLoopSpeed(int delta, const QString &reason)
+{
+    const int before = m_playbackEngine.playbackSpeed();
+    setPlaybackSpeed(before + delta);
+    const int after = m_playbackEngine.playbackSpeed();
+    if (after == before) {
+        setStatusMessage(delta > 0
+                             ? QStringLiteral("已经到最高速度，继续保持稳定")
+                             : QStringLiteral("已经到最低速度，先稳住正确率"));
+    } else {
+        setStatusMessage(QStringLiteral("%1：%2%").arg(reason).arg(after));
+    }
+    emit loopPracticeChanged();
 }
 
 void PianoController::retriggerAutoNoteStarts(qint64 previousTick, qint64 currentTick)

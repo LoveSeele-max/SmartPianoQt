@@ -15,7 +15,7 @@ ColumnLayout {
 
     Rectangle {
         Layout.fillWidth: true
-        height: 202
+        height: 286
         radius: 7
         color: "#111113"
         border.color: "#2f3036"
@@ -56,16 +56,42 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                text: mistakeSummary()
+                text: trendSummary()
                 color: "#cbd5e1"
                 font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: topWrongSummary()
+                color: "#fca5a5"
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: topMissedSummary()
+                color: "#fcd34d"
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: piano.practiceReport.teacherTip || "完成几次练习后，我会给出更具体的复练建议。"
+                color: "#cbd5e1"
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
                 elide: Text.ElideRight
             }
 
             ListView {
                 id: recentSessionList
                 Layout.fillWidth: true
-                Layout.preferredHeight: 70
+                Layout.preferredHeight: 62
                 model: piano.practiceReport.sessions
                 spacing: 3
                 interactive: false
@@ -132,16 +158,36 @@ ColumnLayout {
         return latest.startedAt + "  正 " + latest.correct + " / 错 " + latest.wrong + " / 漏 " + latest.missed
     }
 
-    function mistakeSummary() {
-        if (!piano.practiceReport.hasData || piano.practiceReport.mistakes.length === 0)
-            return "易错音：暂无"
+    function trendSummary() {
+        var trend = piano.practiceReport.scoreTrend || []
+        if (!piano.practiceReport.hasData || trend.length === 0)
+            return "最近 5 次趋势：暂无"
         var parts = []
-        var count = Math.min(3, piano.practiceReport.mistakes.length)
-        for (var i = 0; i < count; ++i) {
-            var item = piano.practiceReport.mistakes[i]
-            parts.push(item.note + " x" + item.total)
-        }
-        return "易错音：" + parts.join("  ")
+        for (var i = 0; i < trend.length; ++i)
+            parts.push(trend[i].score + "%")
+        return "最近 5 次趋势：" + parts.join(" -> ")
+    }
+
+    function topWrongSummary() {
+        var list = piano.practiceReport.topWrongNotes || []
+        if (!piano.practiceReport.hasData || list.length === 0)
+            return "常错音 Top 5：暂无"
+        var parts = []
+        var count = Math.min(5, list.length)
+        for (var i = 0; i < count; ++i)
+            parts.push(list[i].note + " x" + list[i].wrong)
+        return "常错音 Top 5：" + parts.join("  ")
+    }
+
+    function topMissedSummary() {
+        var list = piano.practiceReport.topMissedNotes || []
+        if (!piano.practiceReport.hasData || list.length === 0)
+            return "漏弹音 Top 5：暂无"
+        var parts = []
+        var count = Math.min(5, list.length)
+        for (var i = 0; i < count; ++i)
+            parts.push(list[i].note + " x" + list[i].missed)
+        return "漏弹音 Top 5：" + parts.join("  ")
     }
 
     component ReportMetric: ColumnLayout {

@@ -1,6 +1,45 @@
 #include "practice/PracticeEngine.h"
 
+#include <QtMath>
 #include <algorithm>
+
+namespace {
+
+qint64 normalizedHitTick(const RhythmTimingWindows &windows)
+{
+    return qMax<qint64>(1, qMax(windows.hitTick, qMax(windows.goodTick, windows.perfectTick)));
+}
+
+PracticeJudgeType timingTypeForOffset(qint64 offsetTick, const RhythmTimingWindows &windows)
+{
+    const qint64 absOffset = qAbs(offsetTick);
+    if (absOffset <= qMax<qint64>(0, windows.perfectTick)) {
+        return PracticeJudgeType::Perfect;
+    }
+    if (absOffset <= qMax<qint64>(windows.perfectTick, windows.goodTick)) {
+        return PracticeJudgeType::Good;
+    }
+    return offsetTick < 0 ? PracticeJudgeType::Early : PracticeJudgeType::Late;
+}
+
+bool isAccurateTiming(PracticeJudgeType type)
+{
+    return type == PracticeJudgeType::Perfect || type == PracticeJudgeType::Good;
+}
+
+void finishStep(PracticeNoteResult &result, int &stepIndex, const QVector<PracticeStep> &steps)
+{
+    result.stepComplete = true;
+    result.completedTick = result.expectedTick;
+    ++stepIndex;
+    if (stepIndex >= steps.size()) {
+        result.songComplete = true;
+    } else {
+        result.nextTick = steps.at(stepIndex).tick;
+    }
+}
+
+}
 
 void PracticeEngine::setSong(const QVector<NoteEvent> &notes)
 {
@@ -95,9 +134,12 @@ PracticeNoteResult PracticeEngine::noteOn(int midi, int velocity)
     return result;
 }
 
-PracticeNoteResult PracticeEngine::noteOnRhythm(int midi, int velocity, qint64 actualTick, qint64 toleranceTick)
+PracticeNoteResult PracticeEngine::noteOnRhythm(int midi,
+                                                int velocity,
+                                                qint64 actualTick,
+                                                const RhythmTimingWindows &windows)
 {
-    const QVector<PracticeNoteResult> results = noteOnRhythmDetailed(midi, velocity, actualTick, toleranceTick);
+    const QVector<PracticeNoteResult> results = noteOnRhythmDetailed(midi, velocity, actualTick, windows);
     if (results.isEmpty()) return {};
 
     PracticeNoteResult result = results.first();
@@ -115,7 +157,7 @@ PracticeNoteResult PracticeEngine::noteOnRhythm(int midi, int velocity, qint64 a
 QVector<PracticeNoteResult> PracticeEngine::noteOnRhythmDetailed(int midi,
                                                                  int velocity,
                                                                  qint64 actualTick,
-                                                                 qint64 toleranceTick)
+                                                                 const RhythmTimingWindows &windows)
 {
     PracticeNoteResult result;
     result.actualMidi = midi;
@@ -129,35 +171,20 @@ QVector<PracticeNoteResult> PracticeEngine::noteOnRhythmDetailed(int midi,
     result.expectedMidi = step->expectedMidi.contains(midi) ? midi : step->notes.first().midi;
     result.timingOffsetTick = actualTick - step->tick;
 
-    if (result.timingOffsetTick < -toleranceTick) {
+    const qint64 hitTick = normalizedHitTick(windows);
+    if (result.timingOffsetTick < -hitTick) {
         ++m_wrongCount;
         result.type = PracticeJudgeType::Early;
         result.statsChanged = true;
         return { result };
     }
 
-    if (result.timingOffsetTick > toleranceTick) {
+    if (result.timingOffsetTick > hitTick) {
         QVector<PracticeNoteResult> results;
         results.reserve(step->notes.size());
 
-        const bool isExpected = step->expectedMidi.contains(midi);
-        if (isExpected && !m_matchedNotes.contains(midi)) {
-            result.type = PracticeJudgeType::Late;
-            result.expectedMidi = midi;
-            result.statsChanged = true;
-            result.completedTick = step->tick;
-            results.push_back(result);
-            ++m_missedCount;
-        } else if (!isExpected) {
-            result.type = PracticeJudgeType::Late;
-            result.statsChanged = true;
-            result.completedTick = step->tick;
-            results.push_back(result);
-            ++m_wrongCount;
-        }
-
         for (const NoteEvent &note : step->notes) {
-            if (m_matchedNotes.contains(note.midi) || (isExpected && note.midi == midi)) {
+            if (m_matchedNotes.contains(note.midi)) {
                 continue;
             }
 
@@ -174,35 +201,50 @@ QVector<PracticeNoteResult> PracticeEngine::noteOnRhythmDetailed(int midi,
             ++m_missedCount;
         }
 
-        if (results.isEmpty()) {
-            result.type = PracticeJudgeType::RepeatedNote;
-            results.push_back(result);
-        }
+        if (results.isEmpty()) return {};
 
         PracticeNoteResult &last = results.last();
-        last.stepComplete = true;
-        last.completedTick = step->tick;
         m_matchedNotes.clear();
-        ++m_stepIndex;
-        if (m_stepIndex >= m_steps.size()) {
-            last.songComplete = true;
-        } else {
-            last.nextTick = m_steps.at(m_stepIndex).tick;
-        }
+        finishStep(last, m_stepIndex, m_steps);
         return results;
     }
 
-    PracticeNoteResult judged = noteOn(midi, velocity);
-    judged.actualTick = actualTick;
-    judged.timingOffsetTick = actualTick - judged.expectedTick;
-    return judged.type == PracticeJudgeType::Ignored ? QVector<PracticeNoteResult>{} : QVector<PracticeNoteResult>{ judged };
+    if (!step->expectedMidi.contains(midi)) {
+        ++m_wrongCount;
+        result.type = PracticeJudgeType::WrongNote;
+        result.statsChanged = true;
+        return { result };
+    }
+
+    if (m_matchedNotes.contains(midi)) {
+        result.type = PracticeJudgeType::RepeatedNote;
+        return { result };
+    }
+
+    result.type = timingTypeForOffset(result.timingOffsetTick, windows);
+    result.statsChanged = true;
+    if (isAccurateTiming(result.type)) {
+        ++m_correctCount;
+        result.countedCorrect = true;
+    } else {
+        ++m_wrongCount;
+    }
+
+    m_matchedNotes.insert(midi);
+    if (m_matchedNotes.size() >= step->expectedMidi.size()) {
+        m_matchedNotes.clear();
+        finishStep(result, m_stepIndex, m_steps);
+    }
+
+    return { result };
 }
 
-QVector<PracticeNoteResult> PracticeEngine::markMissedUntil(qint64 actualTick, qint64 toleranceTick)
+QVector<PracticeNoteResult> PracticeEngine::markMissedUntil(qint64 actualTick, const RhythmTimingWindows &windows)
 {
     QVector<PracticeNoteResult> results;
+    const qint64 hitTick = normalizedHitTick(windows);
     while (const PracticeStep *step = currentStep()) {
-        if (actualTick <= step->tick + toleranceTick) break;
+        if (actualTick <= step->tick + hitTick) break;
 
         int missedInStep = 0;
         for (const NoteEvent &note : step->notes) {

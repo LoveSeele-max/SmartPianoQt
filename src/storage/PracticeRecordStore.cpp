@@ -15,6 +15,7 @@
 #include <QVariant>
 #include <QVariantList>
 #include <QtMath>
+#include <algorithm>
 
 namespace {
 
@@ -451,6 +452,57 @@ QVector<PracticeMistakeStat> PracticeRecordStore::mistakeStatsForSheet(qint64 sh
     return stats;
 }
 
+QVector<PracticeMistakeStat> PracticeRecordStore::mistakeStatsForResult(qint64 sheetId,
+                                                                        const QString &result,
+                                                                        int limit,
+                                                                        bool completedOnly,
+                                                                        const QString &mode)
+{
+    QVector<PracticeMistakeStat> stats;
+    if (sheetId <= 0 || result.isEmpty() || !ensureOpen()) return stats;
+
+    QString sql = QStringLiteral(
+        "SELECT COALESCE(pe.expected_midi, pe.actual_midi) AS midi, "
+        "SUM(CASE WHEN pe.result = 'wrong_note' THEN 1 ELSE 0 END) AS wrong_count, "
+        "SUM(CASE WHEN pe.result = 'missed' THEN 1 ELSE 0 END) AS missed_count, "
+        "SUM(CASE WHEN pe.result = 'early' THEN 1 ELSE 0 END) AS early_count, "
+        "SUM(CASE WHEN pe.result = 'late' THEN 1 ELSE 0 END) AS late_count, "
+        "COUNT(*) AS total_count "
+        "FROM practice_events pe "
+        "JOIN practice_sessions ps ON ps.id = pe.session_id "
+        "WHERE pe.result = ? "
+        "AND COALESCE(pe.expected_midi, pe.actual_midi) IS NOT NULL ");
+    QVariantList bindings;
+    bindings.push_back(result);
+    appendSessionFilters(sql, bindings, QStringLiteral("ps"), sheetId, completedOnly, mode);
+    sql += QStringLiteral(
+        "GROUP BY midi "
+        "ORDER BY total_count DESC, midi ASC "
+        "LIMIT ?");
+
+    QSqlQuery query(m_db);
+    query.prepare(sql);
+    bindAll(query, bindings);
+    query.addBindValue(qBound(1, limit, 50));
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return stats;
+    }
+
+    while (query.next()) {
+        PracticeMistakeStat stat;
+        stat.midi = query.value(0).toInt();
+        stat.noteName = NoteUtils::midiToName(stat.midi);
+        stat.wrongCount = query.value(1).toInt();
+        stat.missedCount = query.value(2).toInt();
+        stat.earlyCount = query.value(3).toInt();
+        stat.lateCount = query.value(4).toInt();
+        stat.totalCount = query.value(5).toInt();
+        stats.push_back(stat);
+    }
+    return stats;
+}
+
 PracticeReportSummary PracticeRecordStore::reportForSheet(qint64 sheetId,
                                                            int sessionLimit,
                                                            int mistakeLimit,
@@ -461,7 +513,19 @@ PracticeReportSummary PracticeRecordStore::reportForSheet(qint64 sheetId,
     if (sheetId <= 0 || !ensureOpen()) return report;
 
     report.recentSessions = recentSessions(sessionLimit, sheetId, completedOnly, mode);
+    report.scoreTrend = recentSessions(5, sheetId, completedOnly, mode);
+    std::reverse(report.scoreTrend.begin(), report.scoreTrend.end());
     report.mistakeStats = mistakeStatsForSheet(sheetId, mistakeLimit, completedOnly, mode);
+    report.topWrongNotes = mistakeStatsForResult(sheetId,
+                                                 QStringLiteral("wrong_note"),
+                                                 5,
+                                                 completedOnly,
+                                                 mode);
+    report.topMissedNotes = mistakeStatsForResult(sheetId,
+                                                  QStringLiteral("missed"),
+                                                  5,
+                                                  completedOnly,
+                                                  mode);
 
     QString sql = QStringLiteral(
         "SELECT COUNT(*), COALESCE(ROUND(AVG(score)), 0), "
@@ -529,6 +593,10 @@ QHash<QString, StoredSheetInfo> PracticeRecordStore::sheetsForPaths(const QStrin
 QString PracticeRecordStore::judgeTypeToString(PracticeJudgeType type)
 {
     switch (type) {
+    case PracticeJudgeType::Perfect:
+        return QStringLiteral("perfect");
+    case PracticeJudgeType::Good:
+        return QStringLiteral("good");
     case PracticeJudgeType::Correct:
         return QStringLiteral("correct");
     case PracticeJudgeType::RepeatedNote:
