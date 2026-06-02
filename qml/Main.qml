@@ -20,14 +20,69 @@ ApplicationWindow {
         onAccepted: piano.loadSheet(selectedFile)
     }
 
-    Shortcut {
+    AppShortcut {
+        sequence: "Space"
+        onActivated: piano.playPause()
+    }
+
+    AppShortcut {
+        sequence: "S"
+        onActivated: piano.stop()
+    }
+
+    AppShortcut {
+        sequence: "A"
+        onActivated: piano.setLoopStartAtCurrent()
+    }
+
+    AppShortcut {
+        sequence: "B"
+        onActivated: piano.setLoopEndAtCurrent()
+    }
+
+    AppShortcut {
+        sequence: "L"
+        onActivated: piano.toggleLoopPractice()
+    }
+
+    AppShortcut {
+        sequence: "C"
+        onActivated: piano.clearLoopPractice()
+    }
+
+    AppShortcut {
+        sequence: "Left"
+        onActivated: piano.seekPreviousMeasure()
+    }
+
+    AppShortcut {
         sequence: "Right"
         onActivated: piano.seekNextMeasure()
     }
 
-    Shortcut {
-        sequence: "Left"
-        onActivated: piano.seekPreviousMeasure()
+    AppShortcut {
+        sequence: "-"
+        onActivated: piano.adjustPlaybackSpeed(-5)
+    }
+
+    AppShortcut {
+        sequence: "="
+        onActivated: piano.adjustPlaybackSpeed(5)
+    }
+
+    AppShortcut {
+        sequence: "1"
+        onActivated: piano.mode = "auto"
+    }
+
+    AppShortcut {
+        sequence: "2"
+        onActivated: piano.mode = "practice"
+    }
+
+    AppShortcut {
+        sequence: "3"
+        onActivated: piano.mode = "rhythm"
     }
 
     ColumnLayout {
@@ -62,7 +117,7 @@ ApplicationWindow {
             }
 
             Button {
-                text: piano.playing ? "暂停" : "播放"
+                text: piano.countdownActive ? "取消" : (piano.playing ? "暂停" : "播放")
                 onClicked: piano.playPause()
             }
 
@@ -105,10 +160,32 @@ ApplicationWindow {
                         anchors.fill: parent
                         controller: piano
                     }
+
+                    Rectangle {
+                        visible: piano.countdownActive
+                        anchors.centerIn: parent
+                        width: Math.min(parent.width * 0.42, 260)
+                        height: 132
+                        radius: 8
+                        color: "#18181bcc"
+                        border.color: "#3f3f46"
+
+                        Label {
+                            anchors.centerIn: parent
+                            text: piano.countdownText
+                            color: "#f8fafc"
+                            font.pixelSize: piano.countdownText === "开始" ? 42 : 72
+                            font.bold: true
+                        }
+                    }
                 }
 
                 VirtualKeyboard {}
             }
         }
+    }
+
+    component AppShortcut: Shortcut {
+        context: Qt.ApplicationShortcut
     }
 }

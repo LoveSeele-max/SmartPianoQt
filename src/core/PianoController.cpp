@@ -39,7 +39,10 @@ PianoController::PianoController(QObject *parent)
 {
     m_timer.setInterval(16);
     m_timer.setTimerType(Qt::PreciseTimer);
+    m_countdownTimer.setInterval(1000);
+    m_countdownTimer.setTimerType(Qt::PreciseTimer);
     connect(&m_timer, &QTimer::timeout, this, &PianoController::onFrame);
+    connect(&m_countdownTimer, &QTimer::timeout, this, &PianoController::onCountdownTick);
     m_localMidiLibraryPath = MidiLibraryService::resolveLibraryPath();
     m_recordStore.open();
     m_localSheetModel.setRecordStore(&m_recordStore);
@@ -145,6 +148,20 @@ void PianoController::setPlaybackSpeed(int speed)
     emit playbackSpeedChanged();
 }
 
+void PianoController::adjustPlaybackSpeed(int delta)
+{
+    const int before = m_playbackEngine.playbackSpeed();
+    setPlaybackSpeed(before + delta);
+    const int after = m_playbackEngine.playbackSpeed();
+    if (after == before) {
+        setStatusMessage(delta > 0
+                             ? QStringLiteral("已经是最高速度")
+                             : QStringLiteral("已经是最低速度"));
+        return;
+    }
+    setStatusMessage(QStringLiteral("速度：%1%").arg(after));
+}
+
 void PianoController::setMode(const QString &mode)
 {
     const QString normalized = mode == QStringLiteral("practice") ? QStringLiteral("practice")
@@ -152,6 +169,7 @@ void PianoController::setMode(const QString &mode)
                                                                      : QStringLiteral("auto");
     if (m_mode == normalized) return;
 
+    cancelCountdown();
     finishPracticeSession(false);
     m_mode = normalized;
     resetPracticeState(false, true);
@@ -178,8 +196,28 @@ void PianoController::setVolume(int volume)
     emit volumeChanged();
 }
 
+void PianoController::setSilentPracticeEnabled(bool enabled)
+{
+    if (m_silentPracticeEnabled == enabled) return;
+
+    m_silentPracticeEnabled = enabled;
+    if (m_silentPracticeEnabled) {
+        m_synth.stopAll();
+    }
+
+    emit silentPracticeChanged();
+    setStatusMessage(m_silentPracticeEnabled
+                         ? QStringLiteral("静音练习已开启")
+                         : QStringLiteral("静音练习已关闭"));
+}
+
 void PianoController::playPause()
 {
+    if (m_countdownActive) {
+        cancelCountdown(QStringLiteral("倒计时已取消"));
+        return;
+    }
+
     if (m_playing) {
         setPlaying(false);
         m_practiceSessions.pause();
@@ -196,6 +234,16 @@ void PianoController::playPause()
         seekBeat(0);
     }
 
+    if (isRhythmPracticeMode()) {
+        startRhythmCountdown();
+        return;
+    }
+
+    startPlaybackNow();
+}
+
+void PianoController::startPlaybackNow()
+{
     if (m_loopPracticeEnabled && loopRangeValid() &&
         !tickInsideLoop(m_playbackEngine.currentTick())) {
         seekToLoopStart(false);
@@ -215,8 +263,75 @@ void PianoController::playPause()
                          : QStringLiteral("播放中"));
 }
 
+void PianoController::startRhythmCountdown()
+{
+    if (m_notes.isEmpty()) {
+        setStatusMessage(QStringLiteral("请先加载曲谱"));
+        return;
+    }
+
+    if (m_loopPracticeEnabled && loopRangeValid() &&
+        !tickInsideLoop(m_playbackEngine.currentTick())) {
+        seekToLoopStart(false);
+    } else {
+        preparePracticeAtCurrentPosition();
+    }
+
+    m_countdownTimer.stop();
+    m_countdownActive = true;
+    m_countdownValue = 3;
+    m_countdownText = QString::number(m_countdownValue);
+    emit countdownChanged();
+    setStatusMessage(QStringLiteral("节奏练习准备：%1").arg(m_countdownText));
+    m_countdownTimer.start();
+}
+
+void PianoController::cancelCountdown(const QString &message)
+{
+    if (!m_countdownActive) return;
+
+    m_countdownTimer.stop();
+    m_countdownActive = false;
+    m_countdownValue = 0;
+    m_countdownText.clear();
+    emit countdownChanged();
+
+    if (!message.isEmpty()) {
+        setStatusMessage(message);
+    }
+}
+
+void PianoController::onCountdownTick()
+{
+    if (!m_countdownActive) return;
+
+    if (m_countdownValue > 1) {
+        --m_countdownValue;
+        m_countdownText = QString::number(m_countdownValue);
+        emit countdownChanged();
+        setStatusMessage(QStringLiteral("节奏练习准备：%1").arg(m_countdownText));
+        return;
+    }
+
+    m_countdownTimer.stop();
+    m_countdownValue = 0;
+    m_countdownText = QStringLiteral("开始");
+    emit countdownChanged();
+    setStatusMessage(QStringLiteral("开始"));
+
+    QTimer::singleShot(320, this, [this]() {
+        if (!m_countdownActive || m_countdownValue != 0) return;
+
+        m_countdownActive = false;
+        m_countdownText.clear();
+        emit countdownChanged();
+        startPlaybackNow();
+    });
+}
+
 void PianoController::stop()
 {
+    cancelCountdown();
     finishPracticeSession(false);
     setPlaying(false);
     m_pressedNotes.clear();
@@ -232,6 +347,7 @@ void PianoController::stop()
 
 void PianoController::seekBeat(double beat)
 {
+    cancelCountdown();
     const bool restartSession = m_playing && isPracticeMode();
     finishPracticeSession(false);
     m_playbackEngine.seekTick(beatToTick(beat));
@@ -529,6 +645,7 @@ QVariantMap PianoController::noteToVariant(const NoteEvent &note) const
 
 void PianoController::setSong(Song song, const QString &sourcePath, const QString &sourceFormat)
 {
+    cancelCountdown();
     finishPracticeSession(false);
     setPlaying(false);
     m_pressedNotes.clear();
@@ -783,15 +900,19 @@ void PianoController::refreshActiveNotes()
     if (combined == m_activeNotes) return;
     const QSet<int> previous = m_activeNotes;
 
-    for (int midi : previous) {
-        if (!combined.contains(midi)) {
-            m_synth.noteOff(midi);
+    if (!m_silentPracticeEnabled) {
+        for (int midi : previous) {
+            if (!combined.contains(midi)) {
+                m_synth.noteOff(midi);
+            }
         }
-    }
-    for (int midi : combined) {
-        if (!previous.contains(midi)) {
-            m_synth.noteOn(midi, velocityForMidi(midi));
+        for (int midi : combined) {
+            if (!previous.contains(midi)) {
+                m_synth.noteOn(midi, velocityForMidi(midi));
+            }
         }
+    } else if (!previous.isEmpty() && combined.isEmpty()) {
+        m_synth.stopAll();
     }
 
     m_activeNotes = combined;
@@ -1112,6 +1233,7 @@ void PianoController::adjustLoopSpeed(int delta, const QString &reason)
 
 void PianoController::retriggerAutoNoteStarts(qint64 previousTick, qint64 currentTick)
 {
+    if (m_silentPracticeEnabled) return;
     if (currentTick <= previousTick || m_autoNotes.isEmpty()) return;
 
     const auto first = std::upper_bound(m_notes.begin(), m_notes.end(), previousTick,

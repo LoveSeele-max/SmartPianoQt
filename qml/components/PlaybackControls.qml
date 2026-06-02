@@ -66,6 +66,23 @@ ColumnLayout {
             value: piano.volume
             onMoved: piano.volume = Math.round(value)
         }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+
+            Label {
+                text: "Silent Practice"
+                color: "#d4d4d8"
+                font.pixelSize: 12
+                Layout.fillWidth: true
+            }
+
+            Switch {
+                checked: piano.silentPracticeEnabled
+                onToggled: piano.silentPracticeEnabled = checked
+            }
+        }
     }
 
     ColumnLayout {
@@ -95,6 +112,41 @@ ColumnLayout {
             stepSize: 1
             value: piano.playbackSpeed
             onMoved: piano.playbackSpeed = Math.round(value)
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 6
+
+            Repeater {
+                model: [50, 75, 100, 125]
+
+                delegate: Button {
+                    required property int modelData
+
+                    text: modelData + "%"
+                    Layout.fillWidth: true
+                    highlighted: piano.playbackSpeed === modelData
+                    onClicked: piano.playbackSpeed = modelData
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 6
+
+            Button {
+                text: "-5%"
+                Layout.fillWidth: true
+                onClicked: piano.adjustPlaybackSpeed(-5)
+            }
+
+            Button {
+                text: "+5%"
+                Layout.fillWidth: true
+                onClicked: piano.adjustPlaybackSpeed(5)
+            }
         }
 
         Label {

@@ -36,6 +36,7 @@ class PianoController : public QObject {
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(QString audioStatus READ audioStatus NOTIFY audioStatusChanged)
     Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
+    Q_PROPERTY(bool silentPracticeEnabled READ silentPracticeEnabled WRITE setSilentPracticeEnabled NOTIFY silentPracticeChanged)
     Q_PROPERTY(QVariantList localMidiFiles READ localMidiFiles NOTIFY localMidiLibraryChanged)
     Q_PROPERTY(QAbstractListModel* localSheetModel READ localSheetModel CONSTANT)
     Q_PROPERTY(QString localMidiLibraryPath READ localMidiLibraryPath NOTIFY localMidiLibraryChanged)
@@ -47,6 +48,8 @@ class PianoController : public QObject {
     Q_PROPERTY(int loopCorrectPasses READ loopCorrectPasses NOTIFY loopPracticeChanged)
     Q_PROPERTY(int loopMistakes READ loopMistakes NOTIFY loopPracticeChanged)
     Q_PROPERTY(QString loopStatus READ loopStatus NOTIFY loopPracticeChanged)
+    Q_PROPERTY(bool countdownActive READ countdownActive NOTIFY countdownChanged)
+    Q_PROPERTY(QString countdownText READ countdownText NOTIFY countdownChanged)
 
 public:
     explicit PianoController(QObject *parent = nullptr);
@@ -68,6 +71,7 @@ public:
     QString statusMessage() const { return m_statusMessage; }
     QString audioStatus() const { return m_synth.statusText(); }
     int volume() const { return m_synth.volume(); }
+    bool silentPracticeEnabled() const { return m_silentPracticeEnabled; }
     QVariantList localMidiFiles() const { return m_localSheetModel.toVariantList(); }
     QAbstractListModel *localSheetModel() { return &m_localSheetModel; }
     QString localMidiLibraryPath() const { return m_localMidiLibraryPath; }
@@ -79,6 +83,8 @@ public:
     int loopCorrectPasses() const { return m_loopCorrectPasses; }
     int loopMistakes() const { return m_loopMistakes; }
     QString loopStatus() const;
+    bool countdownActive() const { return m_countdownActive; }
+    QString countdownText() const { return m_countdownText; }
     const QVector<NoteEvent> &noteEvents() const { return m_notes; }
     qint64 currentTickValue() const { return m_playbackEngine.currentTick(); }
     qint64 totalTickValue() const { return m_playbackEngine.totalTicks(); }
@@ -89,6 +95,8 @@ public slots:
     void setPlaybackSpeed(int speed);
     void setMode(const QString &mode);
     void setVolume(int volume);
+    void setSilentPracticeEnabled(bool enabled);
+    Q_INVOKABLE void adjustPlaybackSpeed(int delta);
 
     Q_INVOKABLE void playPause();
     Q_INVOKABLE void stop();
@@ -122,12 +130,15 @@ signals:
     void statusMessageChanged();
     void audioStatusChanged();
     void volumeChanged();
+    void silentPracticeChanged();
     void localMidiLibraryChanged();
     void practiceReportChanged();
     void loopPracticeChanged();
+    void countdownChanged();
 
 private slots:
     void onFrame();
+    void onCountdownTick();
 
 private:
     QVariantMap noteToVariant(const NoteEvent &note) const;
@@ -141,6 +152,9 @@ private:
     void refreshActiveNotes();
     void setPlaying(bool playing);
     void setStatusMessage(const QString &message);
+    void startPlaybackNow();
+    void startRhythmCountdown();
+    void cancelCountdown(const QString &message = QString());
     bool isPracticeMode() const;
     bool isRhythmPracticeMode() const;
     RhythmTimingWindows rhythmTimingWindows() const;
@@ -176,11 +190,13 @@ private:
     bool m_playing = false;
 
     QTimer m_timer;
+    QTimer m_countdownTimer;
     QElapsedTimer m_frameClock;
     QHash<int, int> m_pressedNotes;
     QSet<int> m_autoNotes;
     QSet<int> m_activeNotes;
     MidiSynth m_synth;
+    bool m_silentPracticeEnabled = false;
 
     PracticeEngine m_practice;
     PracticeRecordStore m_recordStore;
@@ -197,6 +213,9 @@ private:
     int m_loopCorrectPasses = 0;
     int m_loopMistakes = 0;
     int m_loopSegmentMistakeBase = 0;
+    bool m_countdownActive = false;
+    int m_countdownValue = 0;
+    QString m_countdownText;
 
     QString m_statusMessage;
     qint64 m_positionNotifyAccumulatorMs = 0;
