@@ -20,6 +20,16 @@ ApplicationWindow {
         onAccepted: piano.loadSheet(selectedFile)
     }
 
+    Shortcut {
+        sequence: "Right"
+        onActivated: piano.seekNextMeasure()
+    }
+
+    Shortcut {
+        sequence: "Left"
+        onActivated: piano.seekPreviousMeasure()
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 18

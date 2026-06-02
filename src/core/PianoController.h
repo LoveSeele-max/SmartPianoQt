@@ -93,6 +93,8 @@ public slots:
     Q_INVOKABLE void playPause();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void seekBeat(double beat);
+    Q_INVOKABLE void seekNextMeasure();
+    Q_INVOKABLE void seekPreviousMeasure();
     Q_INVOKABLE void noteOn(int midi, int velocity = 112);
     Q_INVOKABLE void noteOff(int midi);
     Q_INVOKABLE void loadDemoSong();

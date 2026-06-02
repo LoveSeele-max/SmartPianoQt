@@ -14,8 +14,12 @@
 #include <QUrl>
 #include <QVariantMap>
 #include <algorithm>
+#include <cmath>
 
 namespace {
+
+constexpr double BeatsPerMeasure = 4.0;
+constexpr double MeasureBoundaryEpsilon = 0.02;
 
 qint64 beatsToTicks(double beats, int ppq)
 {
@@ -243,6 +247,37 @@ void PianoController::seekBeat(double beat)
     emit positionChanged();
     emit notesChanged();
     emit practiceChanged();
+}
+
+void PianoController::seekNextMeasure()
+{
+    if (m_notes.isEmpty()) return;
+
+    const double current = currentBeat();
+    double target = (std::floor(current / BeatsPerMeasure) + 1.0) * BeatsPerMeasure;
+    if (target <= current + MeasureBoundaryEpsilon) {
+        target += BeatsPerMeasure;
+    }
+    target = qMin(target, totalBeats());
+
+    seekBeat(target);
+    setStatusMessage(QStringLiteral("已跳到下一小节：%1 拍").arg(target, 0, 'f', 1));
+}
+
+void PianoController::seekPreviousMeasure()
+{
+    if (m_notes.isEmpty()) return;
+
+    const double current = currentBeat();
+    const double currentMeasureStart = std::floor(current / BeatsPerMeasure) * BeatsPerMeasure;
+    double target = currentMeasureStart;
+    if (current <= currentMeasureStart + MeasureBoundaryEpsilon) {
+        target -= BeatsPerMeasure;
+    }
+    target = qMax(0.0, target);
+
+    seekBeat(target);
+    setStatusMessage(QStringLiteral("已回到上一小节：%1 拍").arg(target, 0, 'f', 1));
 }
 
 void PianoController::noteOn(int midi, int velocity)
