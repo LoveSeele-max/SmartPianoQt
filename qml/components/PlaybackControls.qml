@@ -38,33 +38,17 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: Theme.gapSm
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.gapSm
-
-            SectionTitle {
-                text: "左右手练习"
-                Layout.fillWidth: true
-            }
-
-            Switch {
-                checked: piano.handPracticeEnabled
-                onToggled: piano.handPracticeEnabled = checked
-            }
-        }
+        SectionTitle { text: "练习对象" }
 
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.gapSm
 
             TonalButton {
-                text: "左"
+                text: "双手"
                 Layout.fillWidth: true
-                highlighted: piano.handPracticeEnabled && piano.handPracticeSide === "left"
-                onClicked: {
-                    piano.handPracticeEnabled = true
-                    piano.handPracticeSide = "left"
-                }
+                highlighted: !piano.handPracticeEnabled
+                onClicked: piano.handPracticeEnabled = false
             }
 
             TonalButton {
@@ -72,17 +56,55 @@ ColumnLayout {
                 Layout.fillWidth: true
                 highlighted: piano.handPracticeEnabled && piano.handPracticeSide === "right"
                 onClicked: {
-                    piano.handPracticeEnabled = true
                     piano.handPracticeSide = "right"
+                    piano.handPracticeEnabled = true
                 }
+            }
+
+            TonalButton {
+                text: "左"
+                Layout.fillWidth: true
+                highlighted: piano.handPracticeEnabled && piano.handPracticeSide === "left"
+                onClicked: {
+                    piano.handPracticeSide = "left"
+                    piano.handPracticeEnabled = true
+                }
+            }
+        }
+
+        SectionTitle { text: "瀑布显示" }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.gapSm
+
+            TonalButton {
+                text: "目标"
+                Layout.fillWidth: true
+                highlighted: PianoRollSettings.handDisplayMode === "target"
+                onClicked: PianoRollSettings.handDisplayMode = "target"
+            }
+
+            TonalButton {
+                text: "淡显"
+                Layout.fillWidth: true
+                highlighted: PianoRollSettings.handDisplayMode === "dim"
+                onClicked: PianoRollSettings.handDisplayMode = "dim"
+            }
+
+            TonalButton {
+                text: "全部"
+                Layout.fillWidth: true
+                highlighted: PianoRollSettings.handDisplayMode === "all"
+                onClicked: PianoRollSettings.handDisplayMode = "all"
             }
         }
 
         Label {
             Layout.fillWidth: true
             text: piano.handPracticeEnabled
-                  ? "只判定" + (piano.handPracticeSide === "left" ? "左手" : "右手") + "音符"
-                  : "关闭时按完整和弦判定"
+                  ? "按 C4 自动分割，只判定" + (piano.handPracticeSide === "left" ? "左手" : "右手") + "音符"
+                  : "按完整和弦判定，左右手以 C4 分割显示"
             color: Theme.textMuted
             font.pixelSize: Theme.fontCaption
             elide: Text.ElideRight

@@ -14,6 +14,7 @@ class PianoRollItem : public QQuickPaintedItem {
     Q_PROPERTY(qreal lookAheadBeats READ lookAheadBeats WRITE setLookAheadBeats NOTIFY rollSettingsChanged)
     Q_PROPERTY(bool showBeatRuler READ showBeatRuler WRITE setShowBeatRuler NOTIFY rollSettingsChanged)
     Q_PROPERTY(int splitMidi READ splitMidi WRITE setSplitMidi NOTIFY rollSettingsChanged)
+    Q_PROPERTY(QString handDisplayMode READ handDisplayMode WRITE setHandDisplayMode NOTIFY rollSettingsChanged)
 
 public:
     explicit PianoRollItem(QQuickItem *parent = nullptr);
@@ -28,6 +29,8 @@ public:
     void setShowBeatRuler(bool visible);
     int splitMidi() const { return m_splitMidi; }
     void setSplitMidi(int midi);
+    QString handDisplayMode() const { return m_handDisplayMode; }
+    void setHandDisplayMode(const QString &mode);
 
     void paint(QPainter *painter) override;
 
@@ -68,6 +71,7 @@ private:
     qreal m_lookAheadBeats = 7.0;
     bool m_showBeatRuler = true;
     int m_splitMidi = 60;
+    QString m_handDisplayMode = QStringLiteral("target");
     QString m_feedbackText;
     FeedbackKind m_feedbackKind = FeedbackKind::None;
 };

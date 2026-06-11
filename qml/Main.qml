@@ -300,6 +300,7 @@ ApplicationWindow {
                             lookAheadBeats: PianoRollSettings.lookAheadBeats
                             showBeatRuler: PianoRollSettings.beatRulerVisible
                             splitMidi: PianoRollSettings.splitMidi
+                            handDisplayMode: PianoRollSettings.handDisplayMode
                         }
 
                         Rectangle {

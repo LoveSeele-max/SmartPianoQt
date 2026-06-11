@@ -98,6 +98,17 @@ void PianoRollItem::setSplitMidi(int midi)
     update();
 }
 
+void PianoRollItem::setHandDisplayMode(const QString &mode)
+{
+    const QString normalized = mode == QStringLiteral("dim") ? QStringLiteral("dim")
+                                  : mode == QStringLiteral("all") ? QStringLiteral("all")
+                                                                  : QStringLiteral("target");
+    if (m_handDisplayMode == normalized) return;
+    m_handDisplayMode = normalized;
+    emit rollSettingsChanged();
+    update();
+}
+
 void PianoRollItem::paint(QPainter *p)
 {
     const QRectF bounds = boundingRect();
@@ -134,6 +145,8 @@ void PianoRollItem::paint(QPainter *p)
     const qint64 visibleEndTick = qRound64((currentBeat + m_lookAheadBeats + 1.0) * m_controller->ppq());
     const qint64 expectedTick = m_controller->expectedTickValue();
     const bool practiceMode = m_controller->mode() != QStringLiteral("auto");
+    const bool handFilterActive = m_controller->handPracticeEnabled();
+    const bool targetIsLeft = m_controller->handPracticeSide() == QStringLiteral("left");
 
     p->fillRect(QRectF(0, 0, w, topPad), QColor(5, 7, 13, 198));
     p->fillRect(QRectF(0, strikeY - 2, w, h - strikeY + 2), QColor(5, 7, 13, 218));
@@ -242,6 +255,12 @@ void PianoRollItem::paint(QPainter *p)
             const bool preparatory = !expected && !active && !note.played && note.startTick > currentTick;
             if (preparatory != preparatoryPass) continue;
 
+            const bool noteIsLeft = note.midi < m_splitMidi;
+            const bool targetHand = !handFilterActive || (targetIsLeft ? noteIsLeft : !noteIsLeft);
+            if (handFilterActive && m_handDisplayMode == QStringLiteral("target") && !targetHand) {
+                continue;
+            }
+
             QColor fill = handColor(note.midi);
             QColor edge = handEdgeColor(note.midi);
             qreal fillAlpha = 0.86;
@@ -272,6 +291,10 @@ void PianoRollItem::paint(QPainter *p)
             if (preparatory) {
                 fillAlpha = 0.16;
                 edgeAlpha = 0.42;
+            }
+            if (handFilterActive && m_handDisplayMode == QStringLiteral("dim") && !targetHand) {
+                fillAlpha *= 0.34;
+                edgeAlpha *= 0.42;
             }
 
             QLinearGradient noteGradient(rect.topLeft(), rect.bottomRight());
@@ -434,6 +457,7 @@ void PianoRollItem::connectController(PianoController *controller)
     connect(controller, &PianoController::modeChanged, this, [this]() { update(); });
     connect(controller, &PianoController::songChanged, this, [this]() { update(); });
     connect(controller, &PianoController::loopPracticeChanged, this, [this]() { update(); });
+    connect(controller, &PianoController::handPracticeChanged, this, [this]() { update(); });
     connect(controller, &PianoController::statusMessageChanged, this, [this]() {
         triggerFeedbackFromStatus();
     });
