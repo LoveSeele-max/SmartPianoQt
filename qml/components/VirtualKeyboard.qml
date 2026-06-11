@@ -102,15 +102,18 @@ Rectangle {
                 orientation: keyItem.black ? Gradient.Horizontal : Gradient.Vertical
                 GradientStop {
                     position: 0.0
-                    color: keyItem.black ? "#202124" : Theme.surface
+                    color: keyItem.black ? "#202124"
+                                         : Theme.darkMode ? "#FFFDF4" : Theme.surface
                 }
                 GradientStop {
                     position: keyItem.black ? 0.35 : 0.18
-                    color: keyItem.black ? "#111315" : "#F4F1E7"
+                    color: keyItem.black ? "#111315"
+                                         : Theme.darkMode ? "#F8F3E5" : "#F4F1E7"
                 }
                 GradientStop {
                     position: keyItem.black ? 1.0 : 1.0
-                    color: keyItem.black ? "#2F3136" : "#E8E3D3"
+                    color: keyItem.black ? "#2F3136"
+                                         : Theme.darkMode ? "#EFE8D6" : "#E8E3D3"
                 }
             }
 

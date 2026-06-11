@@ -100,7 +100,7 @@ ColumnLayout {
 
     MaterialCard {
         Layout.fillWidth: true
-        Layout.preferredHeight: 184
+        Layout.preferredHeight: 330
         padding: 6
         cardColor: Theme.surfaceContainer
         strokeColor: "transparent"

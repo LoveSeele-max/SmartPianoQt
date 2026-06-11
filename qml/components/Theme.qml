@@ -2,7 +2,7 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-    property bool darkMode: true
+    property bool darkMode: false
 
     readonly property color window: darkMode ? "#0B1020" : "#F8FAFD"
     readonly property color surface: darkMode ? "#111827" : "#FFFFFF"

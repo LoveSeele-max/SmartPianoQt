@@ -12,6 +12,7 @@ ApplicationWindow {
     visible: true
     title: "SmartPianoQt"
     color: Theme.window
+    property bool focusMode: false
     readonly property bool globalShortcutsEnabled: !textInputHasFocus(activeFocusItem)
 
     function textInputHasFocus(item) {
@@ -48,6 +49,12 @@ ApplicationWindow {
         if (piano.mode === "practice")
             return Theme.primary
         return Theme.textSecondary
+    }
+
+    function setFocusMode(enabled) {
+        focusMode = enabled
+        if (!focusMode)
+            shortcutSidebar.expanded = false
     }
 
     FileDialog {
@@ -135,23 +142,37 @@ ApplicationWindow {
         onActivated: piano.mode = "rhythm"
     }
 
+    AppShortcut {
+        sequence: "F11"
+        enabled: root.globalShortcutsEnabled
+        onActivated: root.setFocusMode(!root.focusMode)
+    }
+
+    AppShortcut {
+        sequence: "Esc"
+        enabled: root.focusMode
+        onActivated: root.setFocusMode(false)
+    }
+
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.gapLg
-        spacing: Theme.gapLg
+        anchors.margins: root.focusMode ? Theme.gapMd : Theme.gapLg
+        spacing: root.focusMode ? Theme.gapSm : Theme.gapLg
 
         RowLayout {
+            id: topBar
             Layout.fillWidth: true
             spacing: Theme.gapMd
+            opacity: root.focusMode ? 0.68 : 1.0
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: Theme.gapSm
+                spacing: root.focusMode ? 4 : Theme.gapSm
 
                 Label {
                     text: piano.songTitle
                     color: Theme.textPrimary
-                    font.pixelSize: Theme.fontTitle
+                    font.pixelSize: root.focusMode ? 18 : Theme.fontTitle
                     font.bold: true
                     elide: Text.ElideRight
                     Layout.fillWidth: true
@@ -193,30 +214,35 @@ ApplicationWindow {
 
             PrimaryButton {
                 text: piano.countdownActive ? "取消" : (piano.playing ? "暂停" : "播放")
+                visible: !root.focusMode
                 Layout.preferredWidth: 88
                 onClicked: piano.playPause()
             }
 
             TonalButton {
                 text: "停止"
+                visible: !root.focusMode
                 Layout.preferredWidth: 78
                 onClicked: piano.stop()
             }
 
             TonalButton {
                 text: "示例曲"
+                visible: !root.focusMode
                 Layout.preferredWidth: 86
                 onClicked: piano.loadDemoSong()
             }
 
             TonalButton {
                 text: "导入"
+                visible: !root.focusMode
                 Layout.preferredWidth: 78
                 onClicked: openDialog.open()
             }
 
             TonalButton {
                 text: Theme.darkMode ? "浅色" : "深色"
+                visible: !root.focusMode
                 Layout.preferredWidth: 78
                 highlighted: Theme.darkMode
                 onClicked: Theme.darkMode = !Theme.darkMode
@@ -226,19 +252,22 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: Theme.gapLg
+            spacing: root.focusMode ? 0 : Theme.gapLg
 
-            ControlPanel {}
+            ControlPanel {
+                visible: !root.focusMode
+                onFocusRequested: root.setFocusMode(true)
+            }
 
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: Theme.gapLg
+                spacing: root.focusMode ? 4 : 8
 
                 MaterialCard {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    padding: 10
+                    padding: root.focusMode ? 6 : 10
 
                     Rectangle {
                         anchors.fill: parent
@@ -275,18 +304,51 @@ ApplicationWindow {
                     }
                 }
 
-                VirtualKeyboard {}
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 2
+                    radius: 1
+                    color: Theme.activeKey
+                    opacity: Theme.darkMode ? 0.32 : 0.22
+                }
+
+                VirtualKeyboard {
+                    Layout.preferredHeight: root.focusMode ? 176 : 168
+                }
             }
         }
     }
 
     ShortcutSidebar {
         id: shortcutSidebar
+        visible: !root.focusMode || expanded
         anchors.top: parent.top
         anchors.right: parent.right
-        anchors.topMargin: 104
+        anchors.topMargin: root.focusMode ? 68 : 104
         anchors.rightMargin: Theme.gapLg
         z: 20
+    }
+
+    RowLayout {
+        visible: root.focusMode
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.rightMargin: Theme.gapLg
+        anchors.topMargin: Theme.gapMd
+        spacing: Theme.gapSm
+        z: 30
+
+        TonalButton {
+            text: "?"
+            Layout.preferredWidth: 48
+            onClicked: shortcutSidebar.expanded = !shortcutSidebar.expanded
+        }
+
+        PrimaryButton {
+            text: "退出专注"
+            Layout.preferredWidth: 96
+            onClicked: root.setFocusMode(false)
+        }
     }
 
     component AppShortcut: Shortcut {

@@ -105,6 +105,8 @@ MaterialCard {
                         ListElement { keyText: "1"; actionText: "自动播放" }
                         ListElement { keyText: "2"; actionText: "等待练习" }
                         ListElement { keyText: "3"; actionText: "节奏练习" }
+                        ListElement { keyText: "F11"; actionText: "进入 / 退出专注模式" }
+                        ListElement { keyText: "Esc"; actionText: "退出专注模式" }
                     }
 
                     delegate: Rectangle {

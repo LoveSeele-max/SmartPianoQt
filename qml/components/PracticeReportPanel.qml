@@ -3,22 +3,29 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 ColumnLayout {
+    id: root
+
+    property bool expanded: false
+    property int reportHeight: expanded ? 348 : 78
+
     Layout.fillWidth: true
     spacing: Theme.gapSm
 
-    Label {
-        text: "Practice Report"
-        color: Theme.textPrimary
-        font.pixelSize: Theme.fontBody
-        font.bold: true
+    Behavior on reportHeight {
+        NumberAnimation {
+            duration: 150
+            easing.type: Easing.OutCubic
+        }
     }
 
     MaterialCard {
+        id: reportCard
         Layout.fillWidth: true
-        height: 304
+        Layout.preferredHeight: root.reportHeight
         padding: Theme.gapSm
         cardColor: Theme.surfaceContainer
         strokeColor: "transparent"
+        clip: true
 
         ColumnLayout {
             anchors.fill: parent
@@ -28,137 +35,181 @@ ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Theme.gapSm
 
-                ReportMetric {
-                    title: "平均"
-                    value: piano.practiceReport.hasData ? piano.practiceReport.averageScore + "%" : "--"
-                    accent: Theme.primary
-                    fill: Theme.primaryContainer
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Label {
+                        text: "Practice Report"
+                        color: Theme.textPrimary
+                        font.pixelSize: Theme.fontBody
+                        font.bold: true
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: summaryText()
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
+                        elide: Text.ElideRight
+                    }
                 }
-                ReportMetric {
-                    title: "最近"
-                    value: piano.practiceReport.hasData ? piano.practiceReport.latest.score + "%" : "--"
-                    accent: Theme.success
-                    fill: Theme.successContainer
-                }
-                ReportMetric {
-                    title: "次数"
-                    value: piano.practiceReport.hasData ? piano.practiceReport.sessionCount + "" : "--"
-                    accent: Theme.warningText
-                    fill: Theme.warningContainer
+
+                TonalButton {
+                    text: root.expanded ? "收起" : "展开"
+                    Layout.preferredWidth: 64
+                    onClicked: root.expanded = !root.expanded
                 }
             }
 
-            Label {
+            ColumnLayout {
+                visible: root.expanded
                 Layout.fillWidth: true
-                text: latestSummary()
-                color: Theme.textSecondary
-                font.pixelSize: Theme.fontCaption
-                elide: Text.ElideRight
-            }
+                spacing: Theme.gapSm
 
-            Label {
-                Layout.fillWidth: true
-                text: trendSummary()
-                color: Theme.primary
-                font.pixelSize: Theme.fontCaption
-                elide: Text.ElideRight
-            }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.gapSm
 
-            Label {
-                Layout.fillWidth: true
-                text: topWrongSummary()
-                color: Theme.error
-                font.pixelSize: Theme.fontCaption
-                elide: Text.ElideRight
-            }
+                    ReportMetric {
+                        title: "平均"
+                        value: piano.practiceReport.hasData ? piano.practiceReport.averageScore + "%" : "--"
+                        accent: Theme.primary
+                        fill: Theme.primaryContainer
+                    }
+                    ReportMetric {
+                        title: "最近"
+                        value: piano.practiceReport.hasData ? piano.practiceReport.latest.score + "%" : "--"
+                        accent: Theme.success
+                        fill: Theme.successContainer
+                    }
+                    ReportMetric {
+                        title: "次数"
+                        value: piano.practiceReport.hasData ? piano.practiceReport.sessionCount + "" : "--"
+                        accent: Theme.warningText
+                        fill: Theme.warningContainer
+                    }
+                }
 
-            Label {
-                Layout.fillWidth: true
-                text: topMissedSummary()
-                color: Theme.warningText
-                font.pixelSize: Theme.fontCaption
-                elide: Text.ElideRight
-            }
+                Label {
+                    Layout.fillWidth: true
+                    text: latestSummary()
+                    color: Theme.textSecondary
+                    font.pixelSize: Theme.fontCaption
+                    elide: Text.ElideRight
+                }
 
-            Label {
-                Layout.fillWidth: true
-                text: piano.practiceReport.teacherTip || "完成几次练习后，我会给出更具体的复练建议。"
-                color: Theme.textPrimary
-                font.pixelSize: Theme.fontCaption
-                wrapMode: Text.WordWrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-            }
+                Label {
+                    Layout.fillWidth: true
+                    text: trendSummary()
+                    color: Theme.primary
+                    font.pixelSize: Theme.fontCaption
+                    elide: Text.ElideRight
+                }
 
-            ListView {
-                id: recentSessionList
-                Layout.fillWidth: true
-                Layout.preferredHeight: 70
-                model: piano.practiceReport.sessions
-                spacing: 4
-                interactive: false
-                clip: true
+                Label {
+                    Layout.fillWidth: true
+                    text: topWrongSummary()
+                    color: Theme.error
+                    font.pixelSize: Theme.fontCaption
+                    elide: Text.ElideRight
+                }
 
-                delegate: Rectangle {
-                    required property string startedAt
-                    required property string mode
-                    required property int score
-                    required property int correct
-                    required property int wrong
-                    required property int missed
-                    required property int activeDurationSeconds
+                Label {
+                    Layout.fillWidth: true
+                    text: topMissedSummary()
+                    color: Theme.warningText
+                    font.pixelSize: Theme.fontCaption
+                    elide: Text.ElideRight
+                }
 
-                    width: recentSessionList.width
-                    height: 22
-                    radius: Theme.radiusSmall
-                    color: Theme.surface
+                Label {
+                    Layout.fillWidth: true
+                    text: piano.practiceReport.teacherTip || "完成几次练习后，我会给出更具体的复练建议。"
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.fontCaption
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                }
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: Theme.gapSm
-                        anchors.rightMargin: Theme.gapSm
-                        spacing: Theme.gapSm
+                ListView {
+                    id: recentSessionList
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 70
+                    model: piano.practiceReport.sessions
+                    spacing: 4
+                    interactive: false
+                    clip: true
 
-                        Label {
-                            text: startedAt
-                            color: Theme.textSecondary
-                            font.pixelSize: 10
-                            Layout.preferredWidth: 58
-                        }
+                    delegate: Rectangle {
+                        required property string startedAt
+                        required property string mode
+                        required property int score
+                        required property int correct
+                        required property int wrong
+                        required property int missed
+                        required property int activeDurationSeconds
 
-                        Label {
-                            text: mode
-                            color: Theme.primary
-                            font.pixelSize: 10
-                            Layout.preferredWidth: 42
-                            elide: Text.ElideRight
-                        }
+                        width: recentSessionList.width
+                        height: 22
+                        radius: Theme.radiusSmall
+                        color: Theme.surface
 
-                        Label {
-                            text: score + "%"
-                            color: Theme.success
-                            font.pixelSize: 10
-                            font.bold: true
-                            Layout.preferredWidth: 36
-                        }
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.gapSm
+                            anchors.rightMargin: Theme.gapSm
+                            spacing: Theme.gapSm
 
-                        Label {
-                            text: "OK " + correct + "  W " + wrong + "  M " + missed
-                            color: Theme.textPrimary
-                            font.pixelSize: 10
-                            elide: Text.ElideRight
-                            Layout.fillWidth: true
-                        }
+                            Label {
+                                text: startedAt
+                                color: Theme.textSecondary
+                                font.pixelSize: 10
+                                Layout.preferredWidth: 58
+                            }
 
-                        Label {
-                            text: activeDurationSeconds + "s"
-                            color: Theme.textMuted
-                            font.pixelSize: 10
+                            Label {
+                                text: mode
+                                color: Theme.primary
+                                font.pixelSize: 10
+                                Layout.preferredWidth: 42
+                                elide: Text.ElideRight
+                            }
+
+                            Label {
+                                text: score + "%"
+                                color: Theme.success
+                                font.pixelSize: 10
+                                font.bold: true
+                                Layout.preferredWidth: 36
+                            }
+
+                            Label {
+                                text: "OK " + correct + "  W " + wrong + "  M " + missed
+                                color: Theme.textPrimary
+                                font.pixelSize: 10
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+
+                            Label {
+                                text: activeDurationSeconds + "s"
+                                color: Theme.textMuted
+                                font.pixelSize: 10
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    function summaryText() {
+        if (!piano.practiceReport.hasData)
+            return "暂无练习记录"
+        var latest = piano.practiceReport.latest
+        return "平均 " + piano.practiceReport.averageScore + "% · 最近 " + latest.score + "% · 练习 " + piano.practiceReport.sessionCount + " 次"
     }
 
     function latestSummary() {
