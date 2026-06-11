@@ -12,6 +12,19 @@ ApplicationWindow {
     visible: true
     title: "SmartPianoQt"
     color: "#101114"
+    readonly property bool globalShortcutsEnabled: !textInputHasFocus(activeFocusItem)
+
+    function textInputHasFocus(item) {
+        while (item) {
+            if (item instanceof TextInput ||
+                item instanceof TextEdit ||
+                item.objectName === "globalShortcutTextInput") {
+                return true
+            }
+            item = item.parent
+        }
+        return false
+    }
 
     FileDialog {
         id: openDialog
@@ -22,66 +35,79 @@ ApplicationWindow {
 
     AppShortcut {
         sequence: "Space"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.playPause()
     }
 
     AppShortcut {
         sequence: "S"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.stop()
     }
 
     AppShortcut {
         sequence: "A"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.setLoopStartAtCurrent()
     }
 
     AppShortcut {
         sequence: "B"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.setLoopEndAtCurrent()
     }
 
     AppShortcut {
         sequence: "L"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.toggleLoopPractice()
     }
 
     AppShortcut {
         sequence: "C"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.clearLoopPractice()
     }
 
     AppShortcut {
         sequence: "Left"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.seekPreviousMeasure()
     }
 
     AppShortcut {
         sequence: "Right"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.seekNextMeasure()
     }
 
     AppShortcut {
         sequence: "-"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.adjustPlaybackSpeed(-5)
     }
 
     AppShortcut {
         sequence: "="
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.adjustPlaybackSpeed(5)
     }
 
     AppShortcut {
         sequence: "1"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.mode = "auto"
     }
 
     AppShortcut {
         sequence: "2"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.mode = "practice"
     }
 
     AppShortcut {
         sequence: "3"
+        enabled: root.globalShortcutsEnabled
         onActivated: piano.mode = "rhythm"
     }
 

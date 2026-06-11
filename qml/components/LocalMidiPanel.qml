@@ -63,6 +63,7 @@ ColumnLayout {
 
         TextField {
             id: newCategoryName
+            objectName: "globalShortcutTextInput"
             Layout.fillWidth: true
             placeholderText: "新建分类"
             selectByMouse: true
