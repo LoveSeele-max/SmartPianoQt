@@ -38,6 +38,61 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: Theme.gapSm
 
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.gapSm
+
+            SectionTitle {
+                text: "左右手练习"
+                Layout.fillWidth: true
+            }
+
+            Switch {
+                checked: piano.handPracticeEnabled
+                onToggled: piano.handPracticeEnabled = checked
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.gapSm
+
+            TonalButton {
+                text: "左"
+                Layout.fillWidth: true
+                highlighted: piano.handPracticeEnabled && piano.handPracticeSide === "left"
+                onClicked: {
+                    piano.handPracticeEnabled = true
+                    piano.handPracticeSide = "left"
+                }
+            }
+
+            TonalButton {
+                text: "右"
+                Layout.fillWidth: true
+                highlighted: piano.handPracticeEnabled && piano.handPracticeSide === "right"
+                onClicked: {
+                    piano.handPracticeEnabled = true
+                    piano.handPracticeSide = "right"
+                }
+            }
+        }
+
+        Label {
+            Layout.fillWidth: true
+            text: piano.handPracticeEnabled
+                  ? "只判定" + (piano.handPracticeSide === "left" ? "左手" : "右手") + "音符"
+                  : "关闭时按完整和弦判定"
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontCaption
+            elide: Text.ElideRight
+        }
+    }
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Theme.gapSm
+
         ValueHeader {
             title: "Waterfall"
             value: Math.round(PianoRollSettings.speedScale * 100) + "%"

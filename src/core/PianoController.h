@@ -30,6 +30,8 @@ class PianoController : public QObject {
     Q_PROPERTY(QVariantList notes READ notes NOTIFY notesChanged)
     Q_PROPERTY(QVariantList activeNotes READ activeNotes NOTIFY activeNotesChanged)
     Q_PROPERTY(QVariantList expectedNotes READ expectedNotes NOTIFY practiceChanged)
+    Q_PROPERTY(QVariantList expectedLeftNotes READ expectedLeftNotes NOTIFY practiceChanged)
+    Q_PROPERTY(QVariantList expectedRightNotes READ expectedRightNotes NOTIFY practiceChanged)
     Q_PROPERTY(int correctCount READ correctCount NOTIFY statsChanged)
     Q_PROPERTY(int wrongCount READ wrongCount NOTIFY statsChanged)
     Q_PROPERTY(int missedCount READ missedCount NOTIFY statsChanged)
@@ -37,6 +39,9 @@ class PianoController : public QObject {
     Q_PROPERTY(QString audioStatus READ audioStatus NOTIFY audioStatusChanged)
     Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(bool silentPracticeEnabled READ silentPracticeEnabled WRITE setSilentPracticeEnabled NOTIFY silentPracticeChanged)
+    Q_PROPERTY(bool handPracticeEnabled READ handPracticeEnabled WRITE setHandPracticeEnabled NOTIFY handPracticeChanged)
+    Q_PROPERTY(QString handPracticeSide READ handPracticeSide WRITE setHandPracticeSide NOTIFY handPracticeChanged)
+    Q_PROPERTY(int handSplitMidi READ handSplitMidi WRITE setHandSplitMidi NOTIFY handPracticeChanged)
     Q_PROPERTY(QVariantList localMidiFiles READ localMidiFiles NOTIFY localMidiLibraryChanged)
     Q_PROPERTY(QAbstractListModel* localSheetModel READ localSheetModel CONSTANT)
     Q_PROPERTY(QString localMidiLibraryPath READ localMidiLibraryPath NOTIFY localMidiLibraryChanged)
@@ -67,6 +72,8 @@ public:
     QVariantList notes() const;
     QVariantList activeNotes() const;
     QVariantList expectedNotes() const;
+    QVariantList expectedLeftNotes() const;
+    QVariantList expectedRightNotes() const;
     int correctCount() const { return m_practice.correctCount(); }
     int wrongCount() const { return m_practice.wrongCount(); }
     int missedCount() const { return m_practice.missedCount(); }
@@ -74,6 +81,9 @@ public:
     QString audioStatus() const { return m_synth.statusText(); }
     int volume() const { return m_synth.volume(); }
     bool silentPracticeEnabled() const { return m_silentPracticeEnabled; }
+    bool handPracticeEnabled() const { return m_handPracticeEnabled; }
+    QString handPracticeSide() const { return m_handPracticeSide; }
+    int handSplitMidi() const { return m_handSplitMidi; }
     QVariantList localMidiFiles() const { return m_localSheetModel.toVariantList(); }
     QAbstractListModel *localSheetModel() { return &m_localSheetModel; }
     QString localMidiLibraryPath() const { return m_localMidiLibraryPath; }
@@ -100,6 +110,9 @@ public slots:
     void setMode(const QString &mode);
     void setVolume(int volume);
     void setSilentPracticeEnabled(bool enabled);
+    void setHandPracticeEnabled(bool enabled);
+    void setHandPracticeSide(const QString &side);
+    void setHandSplitMidi(int midi);
     Q_INVOKABLE void adjustPlaybackSpeed(int delta);
 
     Q_INVOKABLE void playPause();
@@ -138,6 +151,7 @@ signals:
     void audioStatusChanged();
     void volumeChanged();
     void silentPracticeChanged();
+    void handPracticeChanged();
     void localMidiLibraryChanged();
     void sheetCategoriesChanged();
     void sheetCategoryFilterChanged();
@@ -151,6 +165,7 @@ private slots:
 
 private:
     QVariantMap noteToVariant(const NoteEvent &note) const;
+    QVariantList expectedNotesForHand(bool leftHand) const;
     void setSong(Song song, const QString &sourcePath = QString(), const QString &sourceFormat = QString());
     void loadJsonSheet(const QString &path);
     void loadMidiFile(const QString &path);
@@ -158,6 +173,10 @@ private:
     void evaluatePracticeNote(int midi, int velocity);
     void handleRhythmMisses(qint64 currentTick);
     void resetPracticeState(bool resetStats, bool resetPlayed);
+    void rebuildPracticeSongForHand();
+    QVector<NoteEvent> practiceNotesForCurrentHand() const;
+    bool noteMatchesSelectedHand(const NoteEvent &note) const;
+    QString handPracticeLabel() const;
     void refreshActiveNotes();
     void setPlaying(bool playing);
     void setStatusMessage(const QString &message);
@@ -208,6 +227,9 @@ private:
     QSet<int> m_activeNotes;
     MidiSynth m_synth;
     bool m_silentPracticeEnabled = false;
+    bool m_handPracticeEnabled = false;
+    QString m_handPracticeSide = QStringLiteral("right");
+    int m_handSplitMidi = 60;
 
     PracticeEngine m_practice;
     PracticeRecordStore m_recordStore;

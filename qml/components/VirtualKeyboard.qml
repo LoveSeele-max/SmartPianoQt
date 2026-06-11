@@ -16,6 +16,9 @@ Rectangle {
     readonly property int inset: 10
     property var activeSet: ({})
     property var expectedSet: ({})
+    property var expectedLeftSet: ({})
+    property var expectedRightSet: ({})
+    readonly property real splitX: inset + keyX(piano.handSplitMidi, (width - inset * 2) / whiteKeyCount)
 
     function rebuildActiveSet() {
         var next = {}
@@ -26,9 +29,17 @@ Rectangle {
 
     function rebuildExpectedSet() {
         var next = {}
+        var left = {}
+        var right = {}
         for (var i = 0; i < piano.expectedNotes.length; ++i)
             next[piano.expectedNotes[i].midi] = true
+        for (var l = 0; l < piano.expectedLeftNotes.length; ++l)
+            left[piano.expectedLeftNotes[l].midi] = true
+        for (var r = 0; r < piano.expectedRightNotes.length; ++r)
+            right[piano.expectedRightNotes[r].midi] = true
         expectedSet = next
+        expectedLeftSet = left
+        expectedRightSet = right
     }
 
     function isBlackMidi(midi) {
@@ -67,6 +78,9 @@ Rectangle {
         function onModeChanged() {
             rebuildExpectedSet()
         }
+        function onHandPracticeChanged() {
+            rebuildExpectedSet()
+        }
     }
 
     Component.onCompleted: {
@@ -83,7 +97,11 @@ Rectangle {
             property bool black: isBlackMidi(midi)
             property real whiteW: (keyboard.width - keyboard.inset * 2) / whiteKeyCount
             property bool active: activeSet[midi] === true
+            property bool expectedLeft: expectedLeftSet[midi] === true && piano.mode !== "auto"
+            property bool expectedRight: expectedRightSet[midi] === true && piano.mode !== "auto"
             property bool expected: expectedSet[midi] === true && piano.mode !== "auto"
+            property color expectedAccent: expectedLeft ? Theme.loop : Theme.primary
+            property color expectedFill: expectedLeft ? Theme.loopContainer : Theme.primaryContainer
 
             z: black ? 4 : 1
             x: keyboard.inset + keyX(midi, whiteW)
@@ -92,7 +110,7 @@ Rectangle {
             height: black ? (keyboard.height - keyboard.inset * 2) * 0.60 : keyboard.height - keyboard.inset * 2
             radius: black ? 4 : 7
             visible: midi >= firstMidi && midi <= lastMidi
-            border.color: keyItem.expected ? Theme.warning
+            border.color: keyItem.expected ? keyItem.expectedAccent
                          : keyItem.active ? Theme.activeKey
                          : black ? "#3C4043"
                          : Theme.outline
@@ -149,8 +167,9 @@ Rectangle {
                 visible: keyItem.active || keyItem.expected
                 anchors.fill: parent
                 radius: parent.radius
-                color: keyItem.expected ? "#FEEFC3CC" : Theme.activeKeyContainer
-                border.color: keyItem.expected ? Theme.warning : Theme.activeKey
+                color: keyItem.expected ? keyItem.expectedFill : Theme.activeKeyContainer
+                opacity: keyItem.expected ? 0.78 : 1.0
+                border.color: keyItem.expected ? keyItem.expectedAccent : Theme.activeKey
                 border.width: 2
             }
 
@@ -182,6 +201,57 @@ Rectangle {
                         piano.noteOff(parent.midi)
                 }
             }
+        }
+    }
+
+    Rectangle {
+        visible: piano.mode !== "auto"
+        z: 20
+        x: Math.max(keyboard.inset, Math.min(keyboard.width - keyboard.inset, keyboard.splitX))
+        y: keyboard.inset
+        width: 1
+        height: keyboard.height - keyboard.inset * 2
+        color: Theme.outline
+        opacity: 0.7
+    }
+
+    Rectangle {
+        visible: piano.mode !== "auto"
+        z: 21
+        x: keyboard.inset + 8
+        y: keyboard.inset + 8
+        width: 42
+        height: 24
+        radius: Theme.radiusPill
+        color: Theme.loopContainer
+        border.color: piano.handPracticeEnabled && piano.handPracticeSide === "left" ? Theme.loop : "transparent"
+
+        Text {
+            anchors.centerIn: parent
+            text: "左"
+            color: Theme.loop
+            font.pixelSize: Theme.fontCaption
+            font.bold: true
+        }
+    }
+
+    Rectangle {
+        visible: piano.mode !== "auto"
+        z: 21
+        x: Math.max(keyboard.inset + 58, Math.min(keyboard.width - keyboard.inset - width - 8, keyboard.splitX + 8))
+        y: keyboard.inset + 8
+        width: 42
+        height: 24
+        radius: Theme.radiusPill
+        color: Theme.primaryContainer
+        border.color: piano.handPracticeEnabled && piano.handPracticeSide === "right" ? Theme.primary : "transparent"
+
+        Text {
+            anchors.centerIn: parent
+            text: "右"
+            color: Theme.primary
+            font.pixelSize: Theme.fontCaption
+            font.bold: true
         }
     }
 }

@@ -64,6 +64,17 @@ ApplicationWindow {
         onAccepted: piano.loadSheet(selectedFile)
     }
 
+    Component.onCompleted: {
+        piano.handSplitMidi = PianoRollSettings.splitMidi
+    }
+
+    Connections {
+        target: PianoRollSettings
+        function onSplitMidiChanged() {
+            piano.handSplitMidi = PianoRollSettings.splitMidi
+        }
+    }
+
     AppShortcut {
         sequence: "Space"
         enabled: root.globalShortcutsEnabled
@@ -200,6 +211,13 @@ ApplicationWindow {
                         text: "静音练习"
                         chipColor: Theme.surfaceContainerHigh
                         textColor: Theme.textSecondary
+                    }
+
+                    StatusChip {
+                        visible: piano.handPracticeEnabled
+                        text: piano.handPracticeSide === "left" ? "左手练习" : "右手练习"
+                        chipColor: piano.handPracticeSide === "left" ? Theme.loopContainer : Theme.primaryContainer
+                        textColor: piano.handPracticeSide === "left" ? Theme.loop : Theme.primary
                     }
 
                     Label {

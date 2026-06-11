@@ -138,6 +138,16 @@ QVariantList PianoController::expectedNotes() const
     return list;
 }
 
+QVariantList PianoController::expectedLeftNotes() const
+{
+    return expectedNotesForHand(true);
+}
+
+QVariantList PianoController::expectedRightNotes() const
+{
+    return expectedNotesForHand(false);
+}
+
 qint64 PianoController::expectedTickValue() const
 {
     return isPracticeMode() ? m_practice.expectedTick() : -1;
@@ -210,6 +220,85 @@ void PianoController::setSilentPracticeEnabled(bool enabled)
     setStatusMessage(m_silentPracticeEnabled
                          ? QStringLiteral("静音练习已开启")
                          : QStringLiteral("静音练习已关闭"));
+}
+
+void PianoController::setHandPracticeEnabled(bool enabled)
+{
+    if (m_handPracticeEnabled == enabled) return;
+
+    const bool restartSession = m_playing && isPracticeMode();
+    finishPracticeSession(false);
+    m_handPracticeEnabled = enabled;
+    rebuildPracticeSongForHand();
+    resetPracticeState(true, true);
+    if (isPracticeMode()) {
+        preparePracticeAtCurrentPosition();
+    }
+    if (restartSession) {
+        beginPracticeSession();
+    }
+
+    emit handPracticeChanged();
+    emit practiceChanged();
+    emit notesChanged();
+    setStatusMessage(m_handPracticeEnabled
+                         ? QStringLiteral("已开启%1练习").arg(handPracticeLabel())
+                         : QStringLiteral("已关闭左右手练习"));
+}
+
+void PianoController::setHandPracticeSide(const QString &side)
+{
+    const QString normalized = side == QStringLiteral("left")
+        ? QStringLiteral("left")
+        : QStringLiteral("right");
+    if (m_handPracticeSide == normalized) return;
+
+    const bool restartSession = m_playing && isPracticeMode() && m_handPracticeEnabled;
+    if (m_handPracticeEnabled) {
+        finishPracticeSession(false);
+    }
+    m_handPracticeSide = normalized;
+    if (m_handPracticeEnabled) {
+        rebuildPracticeSongForHand();
+        resetPracticeState(true, true);
+        if (isPracticeMode()) {
+            preparePracticeAtCurrentPosition();
+        }
+        if (restartSession) {
+            beginPracticeSession();
+        }
+    }
+
+    emit handPracticeChanged();
+    emit practiceChanged();
+    emit notesChanged();
+    setStatusMessage(QStringLiteral("当前练习：%1").arg(handPracticeLabel()));
+}
+
+void PianoController::setHandSplitMidi(int midi)
+{
+    const int normalized = qBound(0, midi, 127);
+    if (m_handSplitMidi == normalized) return;
+
+    const bool restartSession = m_playing && isPracticeMode() && m_handPracticeEnabled;
+    if (m_handPracticeEnabled) {
+        finishPracticeSession(false);
+    }
+    m_handSplitMidi = normalized;
+    if (m_handPracticeEnabled) {
+        rebuildPracticeSongForHand();
+        resetPracticeState(true, true);
+        if (isPracticeMode()) {
+            preparePracticeAtCurrentPosition();
+        }
+        if (restartSession) {
+            beginPracticeSession();
+        }
+    }
+
+    emit handPracticeChanged();
+    emit practiceChanged();
+    emit notesChanged();
 }
 
 void PianoController::playPause()
@@ -715,6 +804,23 @@ QVariantMap PianoController::noteToVariant(const NoteEvent &note) const
     return map;
 }
 
+QVariantList PianoController::expectedNotesForHand(bool leftHand) const
+{
+    QVariantList list;
+    if (!isPracticeMode()) {
+        return list;
+    }
+
+    const QVector<NoteEvent> expected = m_practice.expectedNotes();
+    for (const auto &note : expected) {
+        const bool isLeft = note.midi < m_handSplitMidi;
+        if (isLeft == leftHand) {
+            list.push_back(noteToVariant(note));
+        }
+    }
+    return list;
+}
+
 void PianoController::setSong(Song song, const QString &sourcePath, const QString &sourceFormat)
 {
     cancelCountdown();
@@ -734,7 +840,7 @@ void PianoController::setSong(Song song, const QString &sourcePath, const QStrin
     m_practiceSessions.setSheetId(m_currentSheetId);
     m_notes = std::move(song.notes);
 
-    m_practice.setSong(m_notes);
+    rebuildPracticeSongForHand();
     resetPracticeState(true, true);
     m_loopPracticeEnabled = false;
     m_loopStartSet = false;
@@ -937,6 +1043,40 @@ void PianoController::resetPracticeState(bool resetStats, bool resetPlayed)
     if (resetStats) {
         emit statsChanged();
     }
+}
+
+void PianoController::rebuildPracticeSongForHand()
+{
+    m_practice.setSong(practiceNotesForCurrentHand());
+}
+
+QVector<NoteEvent> PianoController::practiceNotesForCurrentHand() const
+{
+    if (!m_handPracticeEnabled) {
+        return m_notes;
+    }
+
+    QVector<NoteEvent> filtered;
+    filtered.reserve(m_notes.size());
+    for (const NoteEvent &note : m_notes) {
+        if (noteMatchesSelectedHand(note)) {
+            filtered.push_back(note);
+        }
+    }
+    return filtered;
+}
+
+bool PianoController::noteMatchesSelectedHand(const NoteEvent &note) const
+{
+    const bool left = note.midi < m_handSplitMidi;
+    return m_handPracticeSide == QStringLiteral("left") ? left : !left;
+}
+
+QString PianoController::handPracticeLabel() const
+{
+    return m_handPracticeSide == QStringLiteral("left")
+        ? QStringLiteral("左手")
+        : QStringLiteral("右手");
 }
 
 void PianoController::refreshActiveNotes()
