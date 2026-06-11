@@ -249,14 +249,14 @@ void PianoRollItem::paint(QPainter *p)
                                          whiteKeyWidth, fallTop, strikeY, pixelsPerBeat);
             if (rect.bottom() < topPad || rect.top() > strikeY + 36) continue;
 
+            const bool noteIsLeft = note.midi < m_splitMidi;
+            const bool targetHand = !handFilterActive || (targetIsLeft ? noteIsLeft : !noteIsLeft);
             const bool active = currentTick >= note.startTick &&
                                 currentTick <= note.startTick + note.durationTick;
-            const bool expected = practiceMode && expectedTick == note.startTick;
+            const bool expected = practiceMode && expectedTick == note.startTick && targetHand;
             const bool preparatory = !expected && !active && !note.played && note.startTick > currentTick;
             if (preparatory != preparatoryPass) continue;
 
-            const bool noteIsLeft = note.midi < m_splitMidi;
-            const bool targetHand = !handFilterActive || (targetIsLeft ? noteIsLeft : !noteIsLeft);
             if (handFilterActive && m_handDisplayMode == QStringLiteral("target") && !targetHand) {
                 continue;
             }
