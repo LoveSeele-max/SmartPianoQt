@@ -11,7 +11,7 @@ ApplicationWindow {
     height: 760
     visible: true
     title: "SmartPianoQt"
-    color: "#101114"
+    color: Theme.window
     readonly property bool globalShortcutsEnabled: !textInputHasFocus(activeFocusItem)
 
     function textInputHasFocus(item) {
@@ -24,6 +24,30 @@ ApplicationWindow {
             item = item.parent
         }
         return false
+    }
+
+    function modeLabel() {
+        if (piano.mode === "practice")
+            return "等待练习"
+        if (piano.mode === "rhythm")
+            return "节奏练习"
+        return "自动播放"
+    }
+
+    function modeChipColor() {
+        if (piano.mode === "rhythm")
+            return Theme.warningContainer
+        if (piano.mode === "practice")
+            return Theme.primaryContainer
+        return Theme.surfaceContainerHigh
+    }
+
+    function modeTextColor() {
+        if (piano.mode === "rhythm")
+            return Theme.warningText
+        if (piano.mode === "practice")
+            return Theme.primary
+        return Theme.textSecondary
     }
 
     FileDialog {
@@ -113,95 +137,140 @@ ApplicationWindow {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 18
-        spacing: 14
+        anchors.margins: Theme.gapLg
+        spacing: Theme.gapLg
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 12
+            spacing: Theme.gapMd
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 4
+                spacing: Theme.gapSm
 
                 Label {
                     text: piano.songTitle
-                    color: "#f4f4f5"
-                    font.pixelSize: 24
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.fontTitle
                     font.bold: true
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
 
-                Label {
-                    text: piano.statusMessage + "  |  " + piano.audioStatus
-                    color: "#a1a1aa"
-                    font.pixelSize: 13
-                    elide: Text.ElideRight
+                RowLayout {
                     Layout.fillWidth: true
+                    spacing: Theme.gapSm
+
+                    StatusChip {
+                        text: root.modeLabel()
+                        chipColor: root.modeChipColor()
+                        textColor: root.modeTextColor()
+                    }
+
+                    StatusChip {
+                        visible: piano.loopPracticeEnabled
+                        text: "循环中"
+                        chipColor: Theme.loopContainer
+                        textColor: Theme.loop
+                    }
+
+                    StatusChip {
+                        visible: piano.silentPracticeEnabled
+                        text: "静音练习"
+                        chipColor: Theme.surfaceContainerHigh
+                        textColor: Theme.textSecondary
+                    }
+
+                    Label {
+                        text: piano.statusMessage + "  |  " + piano.audioStatus
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontBody
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
                 }
             }
 
-            Button {
+            PrimaryButton {
                 text: piano.countdownActive ? "取消" : (piano.playing ? "暂停" : "播放")
+                Layout.preferredWidth: 88
                 onClicked: piano.playPause()
             }
 
-            Button {
+            TonalButton {
                 text: "停止"
+                Layout.preferredWidth: 78
                 onClicked: piano.stop()
             }
 
-            Button {
+            TonalButton {
                 text: "示例曲"
+                Layout.preferredWidth: 86
                 onClicked: piano.loadDemoSong()
             }
 
-            Button {
+            TonalButton {
                 text: "导入"
+                Layout.preferredWidth: 78
                 onClicked: openDialog.open()
+            }
+
+            TonalButton {
+                text: Theme.darkMode ? "浅色" : "深色"
+                Layout.preferredWidth: 78
+                highlighted: Theme.darkMode
+                onClicked: Theme.darkMode = !Theme.darkMode
             }
         }
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 14
+            Layout.fillHeight: true
+            spacing: Theme.gapLg
 
             ControlPanel {}
 
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 14
+                spacing: Theme.gapLg
 
-                Rectangle {
+                MaterialCard {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    color: "#09090b"
-                    radius: 8
-                    border.color: "#2f3036"
-                    clip: true
-
-                    PianoRollView {
-                        anchors.fill: parent
-                        controller: piano
-                    }
+                    padding: 10
 
                     Rectangle {
-                        visible: piano.countdownActive
-                        anchors.centerIn: parent
-                        width: Math.min(parent.width * 0.42, 260)
-                        height: 132
-                        radius: 8
-                        color: "#18181bcc"
-                        border.color: "#3f3f46"
+                        anchors.fill: parent
+                        color: "#101418"
+                        radius: Theme.radiusMedium
+                        clip: true
 
-                        Label {
+                        PianoRollView {
+                            anchors.fill: parent
+                            controller: piano
+                            rollSpeedScale: PianoRollSettings.speedScale
+                            lookAheadBeats: PianoRollSettings.lookAheadBeats
+                            showBeatRuler: PianoRollSettings.beatRulerVisible
+                            splitMidi: PianoRollSettings.splitMidi
+                        }
+
+                        Rectangle {
+                            visible: piano.countdownActive
                             anchors.centerIn: parent
-                            text: piano.countdownText
-                            color: "#f8fafc"
-                            font.pixelSize: piano.countdownText === "开始" ? 42 : 72
-                            font.bold: true
+                            width: Math.min(parent.width * 0.42, 260)
+                            height: 132
+                            radius: Theme.radiusLarge
+                            color: Theme.darkMode ? "#111827E8" : "#FFFFFFE8"
+                            border.color: Theme.outline
+
+                            Label {
+                                anchors.centerIn: parent
+                                text: piano.countdownText
+                                color: Theme.primary
+                                font.pixelSize: piano.countdownText === "开始" ? 42 : 72
+                                font.bold: true
+                            }
                         }
                     }
                 }
@@ -215,8 +284,8 @@ ApplicationWindow {
         id: shortcutSidebar
         anchors.top: parent.top
         anchors.right: parent.right
-        anchors.topMargin: 112
-        anchors.rightMargin: 18
+        anchors.topMargin: 104
+        anchors.rightMargin: Theme.gapLg
         z: 20
     }
 

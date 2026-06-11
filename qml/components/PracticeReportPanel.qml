@@ -4,85 +4,87 @@ import QtQuick.Layouts
 
 ColumnLayout {
     Layout.fillWidth: true
-    spacing: 8
+    spacing: Theme.gapSm
 
     Label {
         text: "Practice Report"
-        color: "#e4e4e7"
-        font.pixelSize: 13
+        color: Theme.textPrimary
+        font.pixelSize: Theme.fontBody
         font.bold: true
     }
 
-    Rectangle {
+    MaterialCard {
         Layout.fillWidth: true
-        height: 286
-        radius: 7
-        color: "#111113"
-        border.color: "#2f3036"
+        height: 304
+        padding: Theme.gapSm
+        cardColor: Theme.surfaceContainer
+        strokeColor: "transparent"
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 10
-            spacing: 8
+            spacing: Theme.gapSm
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: Theme.gapSm
 
                 ReportMetric {
                     title: "平均"
                     value: piano.practiceReport.hasData ? piano.practiceReport.averageScore + "%" : "--"
-                    accent: "#38bdf8"
+                    accent: Theme.primary
+                    fill: Theme.primaryContainer
                 }
                 ReportMetric {
                     title: "最近"
                     value: piano.practiceReport.hasData ? piano.practiceReport.latest.score + "%" : "--"
-                    accent: "#22c55e"
+                    accent: Theme.success
+                    fill: Theme.successContainer
                 }
                 ReportMetric {
                     title: "次数"
                     value: piano.practiceReport.hasData ? piano.practiceReport.sessionCount + "" : "--"
-                    accent: "#facc15"
+                    accent: Theme.warningText
+                    fill: Theme.warningContainer
                 }
             }
 
             Label {
                 Layout.fillWidth: true
                 text: latestSummary()
-                color: "#a1a1aa"
-                font.pixelSize: 11
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontCaption
                 elide: Text.ElideRight
             }
 
             Label {
                 Layout.fillWidth: true
                 text: trendSummary()
-                color: "#cbd5e1"
-                font.pixelSize: 11
+                color: Theme.primary
+                font.pixelSize: Theme.fontCaption
                 elide: Text.ElideRight
             }
 
             Label {
                 Layout.fillWidth: true
                 text: topWrongSummary()
-                color: "#fca5a5"
-                font.pixelSize: 11
+                color: Theme.error
+                font.pixelSize: Theme.fontCaption
                 elide: Text.ElideRight
             }
 
             Label {
                 Layout.fillWidth: true
                 text: topMissedSummary()
-                color: "#fcd34d"
-                font.pixelSize: 11
+                color: Theme.warningText
+                font.pixelSize: Theme.fontCaption
                 elide: Text.ElideRight
             }
 
             Label {
                 Layout.fillWidth: true
                 text: piano.practiceReport.teacherTip || "完成几次练习后，我会给出更具体的复练建议。"
-                color: "#cbd5e1"
-                font.pixelSize: 11
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontCaption
                 wrapMode: Text.WordWrap
                 maximumLineCount: 2
                 elide: Text.ElideRight
@@ -91,13 +93,13 @@ ColumnLayout {
             ListView {
                 id: recentSessionList
                 Layout.fillWidth: true
-                Layout.preferredHeight: 62
+                Layout.preferredHeight: 70
                 model: piano.practiceReport.sessions
-                spacing: 3
+                spacing: 4
                 interactive: false
                 clip: true
 
-                delegate: RowLayout {
+                delegate: Rectangle {
                     required property string startedAt
                     required property string mode
                     required property int score
@@ -107,44 +109,52 @@ ColumnLayout {
                     required property int activeDurationSeconds
 
                     width: recentSessionList.width
-                    height: 20
-                    spacing: 6
+                    height: 22
+                    radius: Theme.radiusSmall
+                    color: Theme.surface
 
-                    Label {
-                        text: startedAt
-                        color: "#a1a1aa"
-                        font.pixelSize: 10
-                        Layout.preferredWidth: 54
-                    }
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.gapSm
+                        anchors.rightMargin: Theme.gapSm
+                        spacing: Theme.gapSm
 
-                    Label {
-                        text: mode
-                        color: "#38bdf8"
-                        font.pixelSize: 10
-                        Layout.preferredWidth: 42
-                        elide: Text.ElideRight
-                    }
+                        Label {
+                            text: startedAt
+                            color: Theme.textSecondary
+                            font.pixelSize: 10
+                            Layout.preferredWidth: 58
+                        }
 
-                    Label {
-                        text: score + "%"
-                        color: "#22c55e"
-                        font.pixelSize: 10
-                        font.bold: true
-                        Layout.preferredWidth: 34
-                    }
+                        Label {
+                            text: mode
+                            color: Theme.primary
+                            font.pixelSize: 10
+                            Layout.preferredWidth: 42
+                            elide: Text.ElideRight
+                        }
 
-                    Label {
-                        text: "OK " + correct + "  W " + wrong + "  M " + missed
-                        color: "#cbd5e1"
-                        font.pixelSize: 10
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
-                    }
+                        Label {
+                            text: score + "%"
+                            color: Theme.success
+                            font.pixelSize: 10
+                            font.bold: true
+                            Layout.preferredWidth: 36
+                        }
 
-                    Label {
-                        text: activeDurationSeconds + "s"
-                        color: "#71717a"
-                        font.pixelSize: 10
+                        Label {
+                            text: "OK " + correct + "  W " + wrong + "  M " + missed
+                            color: Theme.textPrimary
+                            font.pixelSize: 10
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+
+                        Label {
+                            text: activeDurationSeconds + "s"
+                            color: Theme.textMuted
+                            font.pixelSize: 10
+                        }
                     }
                 }
             }
@@ -175,7 +185,7 @@ ColumnLayout {
         var parts = []
         var count = Math.min(5, list.length)
         for (var i = 0; i < count; ++i)
-            parts.push("#" + (i + 1) + " x" + list[i].wrong)
+            parts.push((list[i].note || "#") + " x" + list[i].wrong)
         return "常错音 Top 5：" + parts.join("  ")
     }
 
@@ -186,31 +196,39 @@ ColumnLayout {
         var parts = []
         var count = Math.min(5, list.length)
         for (var i = 0; i < count; ++i)
-            parts.push("#" + (i + 1) + " x" + list[i].missed)
+            parts.push((list[i].note || "#") + " x" + list[i].missed)
         return "漏弹音 Top 5：" + parts.join("  ")
     }
 
-    component ReportMetric: ColumnLayout {
+    component ReportMetric: Rectangle {
         required property string title
         required property string value
         required property color accent
+        required property color fill
 
         Layout.fillWidth: true
-        spacing: 1
+        height: 58
+        radius: Theme.radiusMedium
+        color: fill
 
-        Label {
-            Layout.alignment: Qt.AlignHCenter
-            text: title
-            color: "#71717a"
-            font.pixelSize: 10
-        }
+        Column {
+            anchors.centerIn: parent
+            spacing: 1
 
-        Label {
-            Layout.alignment: Qt.AlignHCenter
-            text: value
-            color: accent
-            font.pixelSize: 18
-            font.bold: true
+            Label {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: title
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontCaption
+            }
+
+            Label {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: value
+                color: accent
+                font.pixelSize: 18
+                font.bold: true
+            }
         }
     }
 }

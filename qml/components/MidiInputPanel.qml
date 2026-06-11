@@ -4,12 +4,12 @@ import QtQuick.Layouts
 
 ColumnLayout {
     Layout.fillWidth: true
-    spacing: 8
+    spacing: Theme.gapSm
 
     Label {
         text: "MIDI Input"
-        color: "#e4e4e7"
-        font.pixelSize: 13
+        color: Theme.textPrimary
+        font.pixelSize: Theme.fontBody
         font.bold: true
     }
 
@@ -23,21 +23,22 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
+        spacing: Theme.gapSm
 
-        Button {
+        TonalButton {
             text: "刷新"
             Layout.fillWidth: true
             onClicked: midiInput.refreshPorts()
         }
 
-        Button {
+        PrimaryButton {
             text: "连接"
             Layout.fillWidth: true
             enabled: midiInput.inputPorts.length > 0
             onClicked: midiInput.openPort(midiInputBox.currentIndex)
         }
 
-        Button {
+        TonalButton {
             text: "关闭"
             Layout.fillWidth: true
             onClicked: midiInput.close()
@@ -47,8 +48,8 @@ ColumnLayout {
     Label {
         Layout.fillWidth: true
         text: midiInput.backendName + " · " + midiInput.statusText
-        color: "#71717a"
-        font.pixelSize: 10
+        color: Theme.textMuted
+        font.pixelSize: Theme.fontCaption
         elide: Text.ElideRight
     }
 }

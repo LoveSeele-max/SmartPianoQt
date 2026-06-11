@@ -4,26 +4,27 @@ import QtQuick.Layouts
 
 ColumnLayout {
     Layout.fillWidth: true
-    spacing: 8
+    spacing: Theme.gapSm
 
     RowLayout {
         Layout.fillWidth: true
+        spacing: Theme.gapSm
 
         Label {
             text: "Local MIDI"
-            color: "#e4e4e7"
-            font.pixelSize: 13
+            color: Theme.textPrimary
+            font.pixelSize: Theme.fontBody
             font.bold: true
             Layout.fillWidth: true
         }
 
-        Button {
+        TonalButton {
             text: "刷新"
             Layout.preferredWidth: 58
             onClicked: piano.refreshLocalMidiLibrary()
         }
 
-        Button {
+        TonalButton {
             text: "目录"
             Layout.preferredWidth: 58
             onClicked: piano.openLocalMidiLibrary()
@@ -59,7 +60,7 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        spacing: 6
+        spacing: Theme.gapSm
 
         TextField {
             id: newCategoryName
@@ -67,7 +68,7 @@ ColumnLayout {
             Layout.fillWidth: true
             placeholderText: "新建分类"
             selectByMouse: true
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontCaption
 
             function submit() {
                 if (text.trim().length === 0) {
@@ -80,10 +81,10 @@ ColumnLayout {
             onAccepted: submit()
         }
 
-        Button {
+        PrimaryButton {
             id: createCategoryButton
             text: "创建"
-            Layout.preferredWidth: 58
+            Layout.preferredWidth: 62
             enabled: newCategoryName.text.trim().length > 0
             onClicked: newCategoryName.submit()
         }
@@ -92,26 +93,25 @@ ColumnLayout {
     Label {
         Layout.fillWidth: true
         text: piano.localMidiLibraryPath
-        color: "#71717a"
+        color: Theme.textMuted
         font.pixelSize: 10
         elide: Text.ElideMiddle
     }
 
-    Rectangle {
+    MaterialCard {
         Layout.fillWidth: true
-        Layout.preferredHeight: 170
-        radius: 7
-        color: "#111113"
-        border.color: "#2f3036"
-        clip: true
+        Layout.preferredHeight: 184
+        padding: 6
+        cardColor: Theme.surfaceContainer
+        strokeColor: "transparent"
 
         ListView {
             id: localMidiList
             anchors.fill: parent
-            anchors.margins: 4
             model: piano.localSheetModel
-            spacing: 3
+            spacing: 5
             boundsBehavior: Flickable.StopAtBounds
+            clip: true
 
             delegate: Rectangle {
                 id: sheetDelegate
@@ -136,10 +136,10 @@ ColumnLayout {
                 }
 
                 width: localMidiList.width
-                height: 54
-                radius: 5
-                color: mouseArea.containsMouse ? "#27272a" : "#18181b"
-                border.color: "#27272a"
+                height: 62
+                radius: Theme.radiusMedium
+                color: mouseArea.containsMouse ? Theme.hoverSurface : Theme.surface
+                border.color: mouseArea.containsMouse ? Theme.primaryContainer : Theme.outline
 
                 MouseArea {
                     id: mouseArea
@@ -150,46 +150,53 @@ ColumnLayout {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 8
-                    anchors.rightMargin: 8
-                    spacing: 8
+                    anchors.leftMargin: Theme.gapSm
+                    anchors.rightMargin: Theme.gapSm
+                    spacing: Theme.gapSm
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 2
+                        spacing: 3
 
                         Label {
                             Layout.fillWidth: true
                             text: fileName
-                            color: "#e4e4e7"
-                            font.pixelSize: 12
+                            color: Theme.textPrimary
+                            font.pixelSize: Theme.fontBody
+                            font.bold: true
                             elide: Text.ElideRight
                         }
 
-                        Label {
+                        RowLayout {
                             Layout.fillWidth: true
-                            text: sheetDelegate.categoryText()
-                            color: knownSheet ? "#a1a1aa" : "#71717a"
-                            font.pixelSize: 10
-                            elide: Text.ElideRight
+                            spacing: 5
+
+                            StatusChip {
+                                text: sheetDelegate.categoryText()
+                                chipColor: Theme.surfaceContainerHigh
+                                textColor: Theme.textSecondary
+                                horizontalPadding: 8
+                                Layout.maximumWidth: 126
+                            }
+
+                            StatusChip {
+                                text: knownSheet ? "已练过" : "新曲"
+                                chipColor: knownSheet ? Theme.successContainer : Theme.surfaceContainer
+                                textColor: knownSheet ? Theme.success : Theme.textSecondary
+                                horizontalPadding: 8
+                            }
                         }
                     }
 
                     Label {
-                        text: knownSheet ? (noteCount > 0 ? noteCount + " notes" : "tracked") : "new"
-                        color: knownSheet ? "#22c55e" : "#71717a"
+                        text: knownSheet ? (noteCount > 0 ? noteCount + " notes" : "tracked") : sizeKb + " KB"
+                        color: Theme.textMuted
                         font.pixelSize: 10
                     }
 
-                    Label {
-                        text: sizeKb + " KB"
-                        color: "#71717a"
-                        font.pixelSize: 10
-                    }
-
-                    Button {
+                    TonalButton {
                         text: "分类"
-                        Layout.preferredWidth: 48
+                        Layout.preferredWidth: 54
                         enabled: knownSheet
                         onClicked: categoryMenu.open()
 
@@ -220,8 +227,8 @@ ColumnLayout {
                 anchors.centerIn: parent
                 visible: localMidiList.count === 0
                 text: piano.currentSheetCategoryId === 0 ? "没有 MIDI 文件" : "此分类暂无 MIDI 曲谱"
-                color: "#71717a"
-                font.pixelSize: 12
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontBody
             }
         }
     }

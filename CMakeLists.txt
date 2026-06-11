@@ -13,6 +13,10 @@ if(Qt6_VERSION VERSION_GREATER_EQUAL 6.8.0)
     qt_policy(SET QTP0004 NEW)
 endif()
 
+set_source_files_properties(qml/components/Theme.qml qml/components/PianoRollSettings.qml PROPERTIES
+    QT_QML_SINGLETON_TYPE TRUE
+)
+
 qt_add_executable(SmartPianoQt
     src/main.cpp
     src/audio/MidiSynth.cpp
@@ -53,11 +57,17 @@ qt_add_qml_module(SmartPianoQt
         qml/Main.qml
         qml/components/ControlPanel.qml
         qml/components/MidiInputPanel.qml
+        qml/components/PianoRollSettings.qml
         qml/components/PlaybackControls.qml
         qml/components/PracticeReportPanel.qml
         qml/components/PracticeStatusPanel.qml
         qml/components/LocalMidiPanel.qml
+        qml/components/MaterialCard.qml
         qml/components/ShortcutSidebar.qml
+        qml/components/PrimaryButton.qml
+        qml/components/StatusChip.qml
+        qml/components/Theme.qml
+        qml/components/TonalButton.qml
         qml/components/VirtualKeyboard.qml
 )
 

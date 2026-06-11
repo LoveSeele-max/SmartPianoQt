@@ -4,17 +4,13 @@ import QtQuick.Layouts
 
 ColumnLayout {
     Layout.fillWidth: true
-    spacing: 12
+    spacing: Theme.gapMd
 
     ColumnLayout {
         Layout.fillWidth: true
-        spacing: 8
+        spacing: Theme.gapSm
 
-        Label {
-            text: "Mode"
-            color: "#a1a1aa"
-            font.pixelSize: 12
-        }
+        SectionTitle { text: "Mode" }
 
         ComboBox {
             Layout.fillWidth: true
@@ -40,22 +36,61 @@ ColumnLayout {
 
     ColumnLayout {
         Layout.fillWidth: true
-        spacing: 8
+        spacing: Theme.gapSm
+
+        ValueHeader {
+            title: "Waterfall"
+            value: Math.round(PianoRollSettings.speedScale * 100) + "%"
+        }
+
+        Slider {
+            Layout.fillWidth: true
+            from: 65
+            to: 155
+            stepSize: 5
+            value: PianoRollSettings.speedScale * 100
+            onMoved: PianoRollSettings.speedScale = Math.round(value) / 100
+        }
+
+        ValueHeader {
+            title: "Look Ahead"
+            value: PianoRollSettings.lookAheadBeats.toFixed(1) + " beats"
+        }
+
+        Slider {
+            Layout.fillWidth: true
+            from: 3
+            to: 12
+            stepSize: 0.5
+            value: PianoRollSettings.lookAheadBeats
+            onMoved: PianoRollSettings.lookAheadBeats = value
+        }
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: Theme.gapSm
+
             Label {
-                text: "Volume"
-                color: "#a1a1aa"
-                font.pixelSize: 12
+                text: "Beat ruler"
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontBody
                 Layout.fillWidth: true
             }
-            Label {
-                text: Math.round(piano.volume * 100 / 127) + "%"
-                color: "#f4f4f5"
-                font.pixelSize: 14
-                font.bold: true
+
+            Switch {
+                checked: PianoRollSettings.beatRulerVisible
+                onToggled: PianoRollSettings.beatRulerVisible = checked
             }
+        }
+    }
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Theme.gapSm
+
+        ValueHeader {
+            title: "Volume"
+            value: Math.round(piano.volume * 100 / 127) + "%"
         }
 
         Slider {
@@ -69,12 +104,12 @@ ColumnLayout {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: Theme.gapSm
 
             Label {
                 text: "Silent Practice"
-                color: "#d4d4d8"
-                font.pixelSize: 12
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontBody
                 Layout.fillWidth: true
             }
 
@@ -87,22 +122,11 @@ ColumnLayout {
 
     ColumnLayout {
         Layout.fillWidth: true
-        spacing: 8
+        spacing: Theme.gapSm
 
-        RowLayout {
-            Layout.fillWidth: true
-            Label {
-                text: "Speed"
-                color: "#a1a1aa"
-                font.pixelSize: 12
-                Layout.fillWidth: true
-            }
-            Label {
-                text: piano.playbackSpeed + "%"
-                color: "#f4f4f5"
-                font.pixelSize: 14
-                font.bold: true
-            }
+        ValueHeader {
+            title: "Speed"
+            value: piano.playbackSpeed + "%"
         }
 
         Slider {
@@ -116,12 +140,12 @@ ColumnLayout {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 6
+            spacing: Theme.gapSm
 
             Repeater {
                 model: [50, 75, 100, 125]
 
-                delegate: Button {
+                delegate: TonalButton {
                     required property int modelData
 
                     text: modelData + "%"
@@ -134,15 +158,15 @@ ColumnLayout {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 6
+            spacing: Theme.gapSm
 
-            Button {
+            TonalButton {
                 text: "-5%"
                 Layout.fillWidth: true
                 onClicked: piano.adjustPlaybackSpeed(-5)
             }
 
-            Button {
+            TonalButton {
                 text: "+5%"
                 Layout.fillWidth: true
                 onClicked: piano.adjustPlaybackSpeed(5)
@@ -152,20 +176,16 @@ ColumnLayout {
         Label {
             Layout.fillWidth: true
             text: "Tempo " + piano.bpm + " BPM"
-            color: "#71717a"
-            font.pixelSize: 11
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontCaption
         }
     }
 
     ColumnLayout {
         Layout.fillWidth: true
-        spacing: 8
+        spacing: Theme.gapSm
 
-        Label {
-            text: "Progress"
-            color: "#a1a1aa"
-            font.pixelSize: 12
-        }
+        SectionTitle { text: "Progress" }
 
         Slider {
             Layout.fillWidth: true
@@ -177,21 +197,21 @@ ColumnLayout {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 6
+            spacing: Theme.gapSm
 
-            Button {
+            TonalButton {
                 text: "设为 A"
                 Layout.fillWidth: true
                 onClicked: piano.setLoopStartAtCurrent()
             }
 
-            Button {
+            TonalButton {
                 text: "设为 B"
                 Layout.fillWidth: true
                 onClicked: piano.setLoopEndAtCurrent()
             }
 
-            Button {
+            TonalButton {
                 text: piano.loopPracticeEnabled ? "停止循环" : "循环练习"
                 Layout.fillWidth: true
                 enabled: piano.loopRangeValid || piano.loopPracticeEnabled
@@ -202,27 +222,56 @@ ColumnLayout {
 
         Label {
             text: piano.currentBeat.toFixed(1) + " / " + piano.totalBeats.toFixed(1) + " beats"
-            color: "#d4d4d8"
-            font.pixelSize: 12
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontCaption
         }
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: Theme.gapSm
 
             Label {
                 Layout.fillWidth: true
                 text: piano.loopStatus
-                color: piano.loopPracticeEnabled ? "#86efac" : "#a1a1aa"
-                font.pixelSize: 11
+                color: piano.loopPracticeEnabled ? Theme.loop : Theme.textSecondary
+                font.pixelSize: Theme.fontCaption
                 elide: Text.ElideRight
             }
 
-            Button {
+            TonalButton {
                 text: "清除"
+                Layout.preferredWidth: 72
                 enabled: piano.loopRangeValid || piano.loopPracticeEnabled
                 onClicked: piano.clearLoopPractice()
             }
+        }
+    }
+
+    component SectionTitle: Label {
+        color: Theme.textSecondary
+        font.pixelSize: Theme.fontCaption
+        font.bold: true
+    }
+
+    component ValueHeader: RowLayout {
+        required property string title
+        required property string value
+
+        Layout.fillWidth: true
+
+        Label {
+            text: title
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontCaption
+            font.bold: true
+            Layout.fillWidth: true
+        }
+
+        Label {
+            text: value
+            color: Theme.textPrimary
+            font.pixelSize: Theme.fontBody
+            font.bold: true
         }
     }
 }

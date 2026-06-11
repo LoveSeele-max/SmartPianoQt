@@ -2,14 +2,11 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Frame {
-    Layout.preferredWidth: 260
+MaterialCard {
+    Layout.preferredWidth: 300
+    Layout.minimumWidth: 280
     Layout.fillHeight: true
-    background: Rectangle {
-        color: "#18181b"
-        border.color: "#2f3036"
-        radius: 8
-    }
+    padding: Theme.gapMd
 
     ScrollView {
         id: controlScroll
@@ -20,12 +17,12 @@ Frame {
 
         ColumnLayout {
             width: controlScroll.availableWidth
-            spacing: 12
+            spacing: Theme.gapMd
 
             Label {
                 text: "Control"
-                color: "#e4e4e7"
-                font.pixelSize: 15
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontSection
                 font.bold: true
             }
 
@@ -36,7 +33,7 @@ Frame {
             Rectangle {
                 Layout.fillWidth: true
                 height: 1
-                color: "#2f3036"
+                color: Theme.outline
             }
 
             MidiInputPanel {}

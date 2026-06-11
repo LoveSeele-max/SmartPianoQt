@@ -2,19 +2,16 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Frame {
+MaterialCard {
     id: root
     property bool expanded: false
 
-    width: expanded ? 278 : 92
-    height: expanded ? Math.max(420, (parent ? parent.height : 760) - 130) : 38
-    padding: expanded ? 12 : 0
-
-    background: Rectangle {
-        color: "#18181b"
-        border.color: root.expanded ? "#3f3f46" : "#2f3036"
-        radius: 8
-    }
+    width: expanded ? 278 : 56
+    height: expanded ? Math.min(460, Math.max(360, (parent ? parent.height : 760) - 220)) : 56
+    padding: expanded ? Theme.gapMd : 0
+    radius: expanded ? Theme.radiusLarge : 28
+    cardColor: expanded ? Theme.surface : Theme.primary
+    strokeColor: expanded ? Theme.outline : "transparent"
 
     Behavior on width {
         NumberAnimation {
@@ -34,27 +31,19 @@ Frame {
         visible: !root.expanded
         anchors.fill: parent
 
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: 6
-            radius: 6
-            color: collapsedMouse.containsMouse ? "#27272a" : "transparent"
-            border.color: collapsedMouse.containsMouse ? "#52525b" : "transparent"
-        }
-
         Label {
             anchors.centerIn: parent
-            text: "快捷键"
-            color: "#e4e4e7"
-            font.pixelSize: 13
+            text: "?"
+            color: Theme.textOnPrimary
+            font.pixelSize: 24
             font.bold: true
             horizontalAlignment: Text.AlignHCenter
         }
 
         MouseArea {
-            id: collapsedMouse
             anchors.fill: parent
             hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onClicked: root.expanded = true
         }
     }
@@ -62,22 +51,22 @@ Frame {
     ColumnLayout {
         visible: root.expanded
         anchors.fill: parent
-        spacing: 10
+        spacing: Theme.gapMd
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: Theme.gapSm
 
             Label {
                 Layout.fillWidth: true
                 text: "快捷键"
-                color: "#f4f4f5"
-                font.pixelSize: 16
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontSection
                 font.bold: true
             }
 
-            Button {
-                Layout.preferredWidth: 58
+            TonalButton {
+                Layout.preferredWidth: 64
                 text: "收起"
                 onClicked: root.expanded = false
             }
@@ -86,7 +75,7 @@ Frame {
         Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: "#2f3036"
+            color: Theme.outline
         }
 
         ScrollView {
@@ -99,7 +88,7 @@ Frame {
 
             ColumnLayout {
                 width: shortcutScroll.availableWidth
-                spacing: 8
+                spacing: Theme.gapSm
 
                 Repeater {
                     model: ListModel {
@@ -123,28 +112,26 @@ Frame {
                         required property string actionText
 
                         Layout.fillWidth: true
-                        implicitHeight: Math.max(34, actionLabel.implicitHeight + 14)
-                        radius: 6
-                        color: "#202024"
-                        border.color: "#2f3036"
+                        implicitHeight: Math.max(36, actionLabel.implicitHeight + 14)
+                        radius: Theme.radiusMedium
+                        color: Theme.surfaceContainer
 
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: 7
-                            spacing: 8
+                            spacing: Theme.gapSm
 
                             Rectangle {
                                 Layout.preferredWidth: 58
                                 Layout.preferredHeight: 24
-                                radius: 5
-                                color: "#27272a"
-                                border.color: "#52525b"
+                                radius: Theme.radiusSmall
+                                color: Theme.primaryContainer
 
                                 Label {
                                     anchors.centerIn: parent
                                     text: keyText
-                                    color: "#f8fafc"
-                                    font.pixelSize: 12
+                                    color: Theme.primary
+                                    font.pixelSize: Theme.fontCaption
                                     font.bold: true
                                     elide: Text.ElideRight
                                 }
@@ -154,8 +141,8 @@ Frame {
                                 id: actionLabel
                                 Layout.fillWidth: true
                                 text: actionText
-                                color: "#d4d4d8"
-                                font.pixelSize: 12
+                                color: Theme.textSecondary
+                                font.pixelSize: Theme.fontCaption
                                 wrapMode: Text.WordWrap
                             }
                         }
