@@ -11,6 +11,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStandardPaths>
+#include <QSet>
 #include <QStringList>
 #include <QVariant>
 #include <QVariantList>
@@ -19,7 +20,7 @@
 
 namespace {
 
-constexpr int CurrentSchemaVersion = 2;
+constexpr int CurrentSchemaVersion = 3;
 
 QString utcNow()
 {
@@ -590,6 +591,176 @@ QHash<QString, StoredSheetInfo> PracticeRecordStore::sheetsForPaths(const QStrin
     return records;
 }
 
+QVector<SheetCategoryInfo> PracticeRecordStore::sheetCategories()
+{
+    QVector<SheetCategoryInfo> categories;
+    if (!ensureOpen()) return categories;
+
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "SELECT c.id, c.name, COALESCE(c.built_in_key, ''), COUNT(scm.sheet_id) "
+        "FROM sheet_categories c "
+        "LEFT JOIN sheet_category_members scm ON scm.category_id = c.id "
+        "GROUP BY c.id, c.name, c.built_in_key "
+        "ORDER BY "
+        "CASE c.built_in_key "
+        "WHEN 'favorite' THEN 0 "
+        "WHEN 'practice' THEN 1 "
+        "ELSE 2 END, "
+        "LOWER(c.name) ASC"));
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return categories;
+    }
+
+    while (query.next()) {
+        SheetCategoryInfo category;
+        category.id = query.value(0).toLongLong();
+        category.name = query.value(1).toString();
+        category.builtInKey = query.value(2).toString();
+        category.sheetCount = query.value(3).toInt();
+        categories.push_back(category);
+    }
+    return categories;
+}
+
+qint64 PracticeRecordStore::createSheetCategory(const QString &name)
+{
+    if (!ensureOpen()) return -1;
+
+    const QString normalized = normalizedCategoryName(name);
+    if (normalized.isEmpty()) {
+        setLastError(QStringLiteral("分类名称不能为空"));
+        return -1;
+    }
+    if (normalized == QStringLiteral("全部")) {
+        setLastError(QStringLiteral("全部是内置筛选，不能作为自定义分类"));
+        return -1;
+    }
+
+    QSqlQuery select(m_db);
+    select.prepare(QStringLiteral("SELECT id FROM sheet_categories WHERE name = ? COLLATE NOCASE"));
+    select.addBindValue(normalized);
+    if (!select.exec()) {
+        setLastError(select.lastError().text());
+        return -1;
+    }
+    if (select.next()) {
+        return select.value(0).toLongLong();
+    }
+
+    QSqlQuery insert(m_db);
+    insert.prepare(QStringLiteral(
+        "INSERT INTO sheet_categories (name, built_in_key, created_at, updated_at) "
+        "VALUES (?, NULL, ?, ?)"));
+    const QString now = utcNow();
+    insert.addBindValue(normalized);
+    insert.addBindValue(now);
+    insert.addBindValue(now);
+    if (!insert.exec()) {
+        setLastError(insert.lastError().text());
+        return -1;
+    }
+    return insert.lastInsertId().toLongLong();
+}
+
+bool PracticeRecordStore::addSheetToCategory(qint64 sheetId, qint64 categoryId)
+{
+    if (sheetId <= 0 || categoryId <= 0 || !ensureOpen()) return false;
+
+    QSqlQuery insert(m_db);
+    insert.prepare(QStringLiteral(
+        "INSERT OR IGNORE INTO sheet_category_members (category_id, sheet_id, created_at) "
+        "VALUES (?, ?, ?)"));
+    insert.addBindValue(categoryId);
+    insert.addBindValue(sheetId);
+    insert.addBindValue(utcNow());
+    if (!insert.exec()) {
+        setLastError(insert.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool PracticeRecordStore::removeSheetFromCategory(qint64 sheetId, qint64 categoryId)
+{
+    if (sheetId <= 0 || categoryId <= 0 || !ensureOpen()) return false;
+
+    QSqlQuery remove(m_db);
+    remove.prepare(QStringLiteral(
+        "DELETE FROM sheet_category_members WHERE category_id = ? AND sheet_id = ?"));
+    remove.addBindValue(categoryId);
+    remove.addBindValue(sheetId);
+    if (!remove.exec()) {
+        setLastError(remove.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool PracticeRecordStore::setSheetCategoryMembership(qint64 sheetId, qint64 categoryId, bool enabled)
+{
+    return enabled ? addSheetToCategory(sheetId, categoryId)
+                   : removeSheetFromCategory(sheetId, categoryId);
+}
+
+QHash<qint64, QVector<qint64>> PracticeRecordStore::categoriesForSheets(const QVector<qint64> &sheetIds)
+{
+    QHash<qint64, QVector<qint64>> categories;
+    if (sheetIds.isEmpty() || !ensureOpen()) return categories;
+
+    QVector<qint64> uniqueIds;
+    uniqueIds.reserve(sheetIds.size());
+    QSet<qint64> seen;
+    for (qint64 sheetId : sheetIds) {
+        if (sheetId <= 0 || seen.contains(sheetId)) continue;
+        seen.insert(sheetId);
+        uniqueIds.push_back(sheetId);
+        categories.insert(sheetId, {});
+    }
+    if (uniqueIds.isEmpty()) return categories;
+
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "SELECT sheet_id, category_id "
+        "FROM sheet_category_members "
+        "WHERE sheet_id IN (%1) "
+        "ORDER BY created_at ASC, category_id ASC").arg(placeholders(uniqueIds.size())));
+    for (qint64 sheetId : uniqueIds) {
+        query.addBindValue(sheetId);
+    }
+
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return categories;
+    }
+
+    while (query.next()) {
+        categories[query.value(0).toLongLong()].push_back(query.value(1).toLongLong());
+    }
+    return categories;
+}
+
+QSet<qint64> PracticeRecordStore::sheetIdsForCategory(qint64 categoryId)
+{
+    QSet<qint64> sheetIds;
+    if (categoryId <= 0 || !ensureOpen()) return sheetIds;
+
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "SELECT sheet_id FROM sheet_category_members WHERE category_id = ?"));
+    query.addBindValue(categoryId);
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return sheetIds;
+    }
+
+    while (query.next()) {
+        sheetIds.insert(query.value(0).toLongLong());
+    }
+    return sheetIds;
+}
+
 QString PracticeRecordStore::judgeTypeToString(PracticeJudgeType type)
 {
     switch (type) {
@@ -678,9 +849,27 @@ bool PracticeRecordStore::initializeSchema()
             "created_at TEXT NOT NULL,"
             "FOREIGN KEY(session_id) REFERENCES practice_sessions(id)"
             ")"),
+        QStringLiteral(
+            "CREATE TABLE IF NOT EXISTS sheet_categories ("
+            "id INTEGER PRIMARY KEY,"
+            "name TEXT NOT NULL UNIQUE COLLATE NOCASE,"
+            "built_in_key TEXT UNIQUE,"
+            "created_at TEXT NOT NULL,"
+            "updated_at TEXT NOT NULL"
+            ")"),
+        QStringLiteral(
+            "CREATE TABLE IF NOT EXISTS sheet_category_members ("
+            "category_id INTEGER NOT NULL,"
+            "sheet_id INTEGER NOT NULL,"
+            "created_at TEXT NOT NULL,"
+            "PRIMARY KEY(category_id, sheet_id),"
+            "FOREIGN KEY(category_id) REFERENCES sheet_categories(id) ON DELETE CASCADE,"
+            "FOREIGN KEY(sheet_id) REFERENCES sheets(id) ON DELETE CASCADE"
+            ")"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_practice_sessions_sheet_started ON practice_sessions(sheet_id, started_at)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_practice_events_session_tick ON practice_events(session_id, expected_tick)"),
-        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_practice_events_result ON practice_events(result)")
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_practice_events_result ON practice_events(result)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_sheet_category_members_sheet ON sheet_category_members(sheet_id)")
     };
 
     for (const QString &statement : statements) {
@@ -701,6 +890,9 @@ bool PracticeRecordStore::initializeSchema()
         !ensureColumn(QStringLiteral("practice_sessions"),
                       QStringLiteral("active_duration_seconds"),
                       QStringLiteral("active_duration_seconds INTEGER NOT NULL DEFAULT 0"))) {
+        return false;
+    }
+    if (!ensureDefaultSheetCategories()) {
         return false;
     }
     if (version < CurrentSchemaVersion && !setUserVersion(CurrentSchemaVersion)) {
@@ -754,6 +946,36 @@ bool PracticeRecordStore::ensureColumn(const QString &table, const QString &colu
     return true;
 }
 
+bool PracticeRecordStore::ensureDefaultSheetCategories()
+{
+    const struct DefaultCategory {
+        const char *name;
+        const char *key;
+    } defaults[] = {
+        { "\xe5\x96\x9c\xe6\xac\xa2", "favorite" },
+        { "\xe7\xbb\x83\xe4\xb9\xa0", "practice" }
+    };
+
+    const QString now = utcNow();
+    for (const DefaultCategory &category : defaults) {
+        QSqlQuery insert(m_db);
+        insert.prepare(QStringLiteral(
+            "INSERT INTO sheet_categories (name, built_in_key, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(built_in_key) DO UPDATE SET "
+            "name = excluded.name, updated_at = excluded.updated_at"));
+        insert.addBindValue(QString::fromUtf8(category.name));
+        insert.addBindValue(QString::fromLatin1(category.key));
+        insert.addBindValue(now);
+        insert.addBindValue(now);
+        if (!insert.exec()) {
+            setLastError(insert.lastError().text());
+            return false;
+        }
+    }
+    return true;
+}
+
 QString PracticeRecordStore::defaultDatabasePath() const
 {
     QString basePath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -761,6 +983,11 @@ QString PracticeRecordStore::defaultDatabasePath() const
         basePath = QDir::current().filePath(QStringLiteral("data"));
     }
     return QDir(basePath).filePath(QStringLiteral("practice_records.sqlite3"));
+}
+
+QString PracticeRecordStore::normalizedCategoryName(const QString &name) const
+{
+    return name.simplified().left(32);
 }
 
 QString PracticeRecordStore::sheetHash(const Song &song) const

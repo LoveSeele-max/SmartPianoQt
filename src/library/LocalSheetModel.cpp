@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QSet>
 #include <QVariantMap>
 #include <QtMath>
 
@@ -45,6 +46,14 @@ QVariant LocalSheetModel::data(const QModelIndex &index, int role) const
         return entry.noteCount;
     case UpdatedAtRole:
         return entry.updatedAt;
+    case CategoryIdsRole: {
+        QVariantList ids;
+        ids.reserve(entry.categoryIds.size());
+        for (qint64 id : entry.categoryIds) ids.push_back(id);
+        return ids;
+    }
+    case CategoryNamesRole:
+        return entry.categoryNames;
     default:
         return {};
     }
@@ -62,7 +71,9 @@ QHash<int, QByteArray> LocalSheetModel::roleNames() const
         { KnownSheetRole, "knownSheet" },
         { BpmRole, "bpm" },
         { NoteCountRole, "noteCount" },
-        { UpdatedAtRole, "updatedAt" }
+        { UpdatedAtRole, "updatedAt" },
+        { CategoryIdsRole, "categoryIds" },
+        { CategoryNamesRole, "categoryNames" }
     };
 }
 
@@ -97,6 +108,25 @@ void LocalSheetModel::refresh()
     const QHash<QString, StoredSheetInfo> knownSheets = m_store
         ? m_store->sheetsForPaths(paths)
         : QHash<QString, StoredSheetInfo>{};
+    QVector<qint64> knownSheetIds;
+    knownSheetIds.reserve(knownSheets.size());
+    for (auto it = knownSheets.cbegin(); it != knownSheets.cend(); ++it) {
+        if (it->id > 0) knownSheetIds.push_back(it->id);
+    }
+
+    const QHash<qint64, QVector<qint64>> categoriesBySheet = m_store
+        ? m_store->categoriesForSheets(knownSheetIds)
+        : QHash<qint64, QVector<qint64>>{};
+    QHash<qint64, QString> categoryNamesById;
+    if (m_store) {
+        const QVector<SheetCategoryInfo> categories = m_store->sheetCategories();
+        for (const SheetCategoryInfo &category : categories) {
+            categoryNamesById.insert(category.id, category.name);
+        }
+    }
+    const QSet<qint64> filteredSheetIds = m_categoryFilterId > 0 && m_store
+        ? m_store->sheetIdsForCategory(m_categoryFilterId)
+        : QSet<qint64>{};
 
     QVector<LocalSheetEntry> next;
     next.reserve(files.size());
@@ -116,6 +146,17 @@ void LocalSheetModel::refresh()
             entry.bpm = it->bpm;
             entry.noteCount = it->noteCount;
             entry.updatedAt = it->updatedAt;
+            entry.categoryIds = categoriesBySheet.value(entry.sheetId);
+            for (qint64 categoryId : entry.categoryIds) {
+                const QString categoryName = categoryNamesById.value(categoryId);
+                if (!categoryName.isEmpty()) {
+                    entry.categoryNames.push_back(categoryName);
+                }
+            }
+        }
+        if (m_categoryFilterId > 0 &&
+            (entry.sheetId <= 0 || !filteredSheetIds.contains(entry.sheetId))) {
+            continue;
         }
         next.push_back(entry);
     }
@@ -129,6 +170,27 @@ QString LocalSheetModel::filePathAt(int row) const
 {
     if (row < 0 || row >= m_entries.size()) return {};
     return m_entries.at(row).path;
+}
+
+qint64 LocalSheetModel::sheetIdAt(int row) const
+{
+    if (row < 0 || row >= m_entries.size()) return -1;
+    return m_entries.at(row).sheetId;
+}
+
+QVector<qint64> LocalSheetModel::categoryIdsAt(int row) const
+{
+    if (row < 0 || row >= m_entries.size()) return {};
+    return m_entries.at(row).categoryIds;
+}
+
+bool LocalSheetModel::setCategoryFilterId(qint64 categoryId)
+{
+    const qint64 normalized = qMax<qint64>(0, categoryId);
+    if (m_categoryFilterId == normalized) return false;
+    m_categoryFilterId = normalized;
+    refresh();
+    return true;
 }
 
 QVariantList LocalSheetModel::toVariantList() const
@@ -154,5 +216,12 @@ QVariantMap LocalSheetModel::entryToMap(const LocalSheetEntry &entry) const
     item.insert(QStringLiteral("bpm"), entry.bpm);
     item.insert(QStringLiteral("noteCount"), entry.noteCount);
     item.insert(QStringLiteral("updatedAt"), entry.updatedAt);
+    QVariantList categoryIds;
+    categoryIds.reserve(entry.categoryIds.size());
+    for (qint64 categoryId : entry.categoryIds) {
+        categoryIds.push_back(categoryId);
+    }
+    item.insert(QStringLiteral("categoryIds"), categoryIds);
+    item.insert(QStringLiteral("categoryNames"), entry.categoryNames);
     return item;
 }

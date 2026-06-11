@@ -4,6 +4,7 @@
 #include "practice/PracticeEngine.h"
 
 #include <QHash>
+#include <QSet>
 #include <QSqlDatabase>
 #include <QString>
 #include <QStringList>
@@ -87,6 +88,15 @@ struct StoredSheetInfo {
     QString updatedAt;
 };
 
+struct SheetCategoryInfo {
+    qint64 id = -1;
+    QString name;
+    QString builtInKey;
+    int sheetCount = 0;
+
+    bool builtIn() const { return !builtInKey.isEmpty(); }
+};
+
 class PracticeRecordStore {
 public:
     PracticeRecordStore();
@@ -117,6 +127,13 @@ public:
                                          bool completedOnly = false,
                                          const QString &mode = QString());
     QHash<QString, StoredSheetInfo> sheetsForPaths(const QStringList &paths);
+    QVector<SheetCategoryInfo> sheetCategories();
+    qint64 createSheetCategory(const QString &name);
+    bool addSheetToCategory(qint64 sheetId, qint64 categoryId);
+    bool removeSheetFromCategory(qint64 sheetId, qint64 categoryId);
+    bool setSheetCategoryMembership(qint64 sheetId, qint64 categoryId, bool enabled);
+    QHash<qint64, QVector<qint64>> categoriesForSheets(const QVector<qint64> &sheetIds);
+    QSet<qint64> sheetIdsForCategory(qint64 categoryId);
 
     static QString judgeTypeToString(PracticeJudgeType type);
 
@@ -126,8 +143,10 @@ private:
     int readUserVersion();
     bool setUserVersion(int version);
     bool ensureColumn(const QString &table, const QString &column, const QString &definition);
+    bool ensureDefaultSheetCategories();
     QString defaultDatabasePath() const;
     QString sheetHash(const Song &song) const;
+    QString normalizedCategoryName(const QString &name) const;
     QVector<PracticeMistakeStat> mistakeStatsForResult(qint64 sheetId,
                                                        const QString &result,
                                                        int limit,

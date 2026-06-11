@@ -47,6 +47,7 @@ PianoController::PianoController(QObject *parent)
     m_recordStore.open();
     m_localSheetModel.setRecordStore(&m_recordStore);
     m_localSheetModel.setLibraryPath(m_localMidiLibraryPath);
+    refreshSheetCategories();
     refreshLocalMidiLibrary();
     loadDemoSong();
 }
@@ -506,6 +507,77 @@ void PianoController::loadLocalMidi(int index)
 void PianoController::openLocalMidiLibrary()
 {
     MidiLibraryService::openLibrary(m_localMidiLibraryPath);
+}
+
+void PianoController::setLocalSheetCategory(int categoryId)
+{
+    const qint64 normalized = qMax(0, categoryId);
+    if (m_currentSheetCategoryId == normalized) return;
+
+    m_currentSheetCategoryId = normalized;
+    m_localSheetModel.setCategoryFilterId(m_currentSheetCategoryId);
+    emit localMidiLibraryChanged();
+    emit sheetCategoryFilterChanged();
+
+    QString categoryName = QStringLiteral("全部");
+    for (const QVariant &item : m_sheetCategories) {
+        const QVariantMap category = item.toMap();
+        if (category.value(QStringLiteral("id")).toLongLong() == m_currentSheetCategoryId) {
+            categoryName = category.value(QStringLiteral("name")).toString();
+            break;
+        }
+    }
+    setStatusMessage(QStringLiteral("曲谱分类：%1").arg(categoryName));
+}
+
+void PianoController::createSheetCategory(const QString &name)
+{
+    const qint64 categoryId = m_recordStore.createSheetCategory(name);
+    if (categoryId <= 0) {
+        setStatusMessage(m_recordStore.lastError().isEmpty()
+                             ? QStringLiteral("分类创建失败")
+                             : m_recordStore.lastError());
+        return;
+    }
+
+    refreshSheetCategories();
+    setStatusMessage(QStringLiteral("已创建分类：%1").arg(name.simplified().left(32)));
+}
+
+void PianoController::toggleLocalMidiCategory(int index, int categoryId)
+{
+    if (categoryId <= 0) return;
+
+    const qint64 sheetId = m_localSheetModel.sheetIdAt(index);
+    if (sheetId <= 0) {
+        setStatusMessage(QStringLiteral("请先加载一次曲谱后再分类"));
+        return;
+    }
+
+    const QVector<qint64> categoryIds = m_localSheetModel.categoryIdsAt(index);
+    const bool currentlyInCategory = categoryIds.contains(categoryId);
+    if (!m_recordStore.setSheetCategoryMembership(sheetId, categoryId, !currentlyInCategory)) {
+        setStatusMessage(m_recordStore.lastError().isEmpty()
+                             ? QStringLiteral("分类更新失败")
+                             : m_recordStore.lastError());
+        return;
+    }
+
+    QString categoryName = QStringLiteral("分类");
+    for (const QVariant &item : m_sheetCategories) {
+        const QVariantMap category = item.toMap();
+        if (category.value(QStringLiteral("id")).toLongLong() == categoryId) {
+            categoryName = category.value(QStringLiteral("name")).toString();
+            break;
+        }
+    }
+
+    refreshSheetCategories();
+    m_localSheetModel.refresh();
+    emit localMidiLibraryChanged();
+    setStatusMessage(currentlyInCategory
+                         ? QStringLiteral("已移出分类：%1").arg(categoryName)
+                         : QStringLiteral("已加入分类：%1").arg(categoryName));
 }
 
 void PianoController::setLoopStartAtCurrent()
@@ -1099,6 +1171,40 @@ QVariantMap PianoController::practiceReportToVariant(const PracticeReportSummary
     }
     map.insert(QStringLiteral("teacherTip"), teacherTip);
     return map;
+}
+
+void PianoController::refreshSheetCategories()
+{
+    QVariantList next;
+
+    QVariantMap all;
+    all.insert(QStringLiteral("id"), 0);
+    all.insert(QStringLiteral("name"), QStringLiteral("全部"));
+    all.insert(QStringLiteral("builtInKey"), QStringLiteral("all"));
+    all.insert(QStringLiteral("builtIn"), true);
+    all.insert(QStringLiteral("sheetCount"), 0);
+    next.push_back(all);
+
+    const QVector<SheetCategoryInfo> categories = m_recordStore.sheetCategories();
+    next.reserve(categories.size() + 1);
+    for (const SheetCategoryInfo &category : categories) {
+        next.push_back(sheetCategoryToVariant(category));
+    }
+
+    if (m_sheetCategories == next) return;
+    m_sheetCategories = next;
+    emit sheetCategoriesChanged();
+}
+
+QVariantMap PianoController::sheetCategoryToVariant(const SheetCategoryInfo &category) const
+{
+    QVariantMap item;
+    item.insert(QStringLiteral("id"), category.id);
+    item.insert(QStringLiteral("name"), category.name);
+    item.insert(QStringLiteral("builtInKey"), category.builtInKey);
+    item.insert(QStringLiteral("builtIn"), category.builtIn());
+    item.insert(QStringLiteral("sheetCount"), category.sheetCount);
+    return item;
 }
 
 qint64 PianoController::loopStartTick() const

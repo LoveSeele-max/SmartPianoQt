@@ -610,6 +610,40 @@ void testPracticeRecordStore()
     const qint64 sameSheetId = store.upsertSheet(song, QStringLiteral("test.mid"), QStringLiteral("midi"));
     expect(sameSheetId == sheetId, "PracticeRecordStore should reuse sheet ids for unchanged content");
 
+    const QVector<SheetCategoryInfo> defaultCategories = store.sheetCategories();
+    auto findCategoryId = [](const QVector<SheetCategoryInfo> &categories, const QString &name) {
+        for (const SheetCategoryInfo &category : categories) {
+            if (category.name == name) return category.id;
+        }
+        return qint64(-1);
+    };
+    const qint64 favoriteCategoryId = findCategoryId(defaultCategories, QStringLiteral("喜欢"));
+    const qint64 practiceCategoryId = findCategoryId(defaultCategories, QStringLiteral("练习"));
+    expect(favoriteCategoryId > 0, "PracticeRecordStore should create the default favorite category");
+    expect(practiceCategoryId > 0, "PracticeRecordStore should create the default practice category");
+
+    const qint64 slowPracticeCategoryId = store.createSheetCategory(QStringLiteral("慢练"));
+    expect(slowPracticeCategoryId > 0, "PracticeRecordStore should create custom sheet categories");
+    const qint64 duplicateCategoryId = store.createSheetCategory(QStringLiteral("慢练"));
+    expect(duplicateCategoryId == slowPracticeCategoryId, "PracticeRecordStore should reuse matching custom category names");
+
+    expect(store.addSheetToCategory(sheetId, favoriteCategoryId),
+           "PracticeRecordStore should add a sheet to the favorite category");
+    expect(store.addSheetToCategory(sheetId, slowPracticeCategoryId),
+           "PracticeRecordStore should add a sheet to a custom category");
+    QHash<qint64, QVector<qint64>> categoriesBySheet = store.categoriesForSheets({ sheetId });
+    expect(categoriesBySheet.value(sheetId).contains(favoriteCategoryId),
+           "PracticeRecordStore should query favorite membership by sheet");
+    expect(categoriesBySheet.value(sheetId).contains(slowPracticeCategoryId),
+           "PracticeRecordStore should query custom membership by sheet");
+    expect(store.sheetIdsForCategory(favoriteCategoryId).contains(sheetId),
+           "PracticeRecordStore should query sheet ids by category");
+    expect(store.removeSheetFromCategory(sheetId, slowPracticeCategoryId),
+           "PracticeRecordStore should remove a sheet from a custom category");
+    categoriesBySheet = store.categoriesForSheets({ sheetId });
+    expect(!categoriesBySheet.value(sheetId).contains(slowPracticeCategoryId),
+           "PracticeRecordStore should clear removed category membership");
+
     PracticeSessionStart start;
     start.mode = QStringLiteral("rhythm");
     start.playbackSpeed = 95;
@@ -776,7 +810,7 @@ void testPracticeRecordStore()
     QSqlQuery version(db);
     expect(version.exec(QStringLiteral("PRAGMA user_version")), "schema version query should run");
     expect(version.next(), "schema version query should return a row");
-    expect(version.value(0).toInt() >= 2, "schema should store the migration user_version");
+    expect(version.value(0).toInt() >= 3, "schema should store the migration user_version");
 
     sessions.finish();
     events.finish();

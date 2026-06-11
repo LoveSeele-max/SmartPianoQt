@@ -4,6 +4,7 @@
 
 #include <QAbstractListModel>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QVector>
@@ -18,6 +19,8 @@ struct LocalSheetEntry {
     int bpm = 0;
     int noteCount = 0;
     QString updatedAt;
+    QVector<qint64> categoryIds;
+    QStringList categoryNames;
 };
 
 class LocalSheetModel : public QAbstractListModel {
@@ -34,7 +37,9 @@ public:
         KnownSheetRole,
         BpmRole,
         NoteCountRole,
-        UpdatedAtRole
+        UpdatedAtRole,
+        CategoryIdsRole,
+        CategoryNamesRole
     };
 
     explicit LocalSheetModel(QObject *parent = nullptr);
@@ -48,6 +53,10 @@ public:
     QString libraryPath() const { return m_libraryPath; }
     void refresh();
     QString filePathAt(int row) const;
+    qint64 sheetIdAt(int row) const;
+    QVector<qint64> categoryIdsAt(int row) const;
+    bool setCategoryFilterId(qint64 categoryId);
+    qint64 categoryFilterId() const { return m_categoryFilterId; }
     QVariantList toVariantList() const;
 
 private:
@@ -55,5 +64,6 @@ private:
 
     PracticeRecordStore *m_store = nullptr;
     QString m_libraryPath;
+    qint64 m_categoryFilterId = 0;
     QVector<LocalSheetEntry> m_entries;
 };

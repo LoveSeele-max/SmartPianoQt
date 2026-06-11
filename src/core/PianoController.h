@@ -40,6 +40,8 @@ class PianoController : public QObject {
     Q_PROPERTY(QVariantList localMidiFiles READ localMidiFiles NOTIFY localMidiLibraryChanged)
     Q_PROPERTY(QAbstractListModel* localSheetModel READ localSheetModel CONSTANT)
     Q_PROPERTY(QString localMidiLibraryPath READ localMidiLibraryPath NOTIFY localMidiLibraryChanged)
+    Q_PROPERTY(QVariantList sheetCategories READ sheetCategories NOTIFY sheetCategoriesChanged)
+    Q_PROPERTY(int currentSheetCategoryId READ currentSheetCategoryId NOTIFY sheetCategoryFilterChanged)
     Q_PROPERTY(QVariantMap practiceReport READ practiceReport NOTIFY practiceReportChanged)
     Q_PROPERTY(bool loopPracticeEnabled READ loopPracticeEnabled NOTIFY loopPracticeChanged)
     Q_PROPERTY(bool loopRangeValid READ loopRangeValid NOTIFY loopPracticeChanged)
@@ -75,6 +77,8 @@ public:
     QVariantList localMidiFiles() const { return m_localSheetModel.toVariantList(); }
     QAbstractListModel *localSheetModel() { return &m_localSheetModel; }
     QString localMidiLibraryPath() const { return m_localMidiLibraryPath; }
+    QVariantList sheetCategories() const { return m_sheetCategories; }
+    int currentSheetCategoryId() const { return int(m_currentSheetCategoryId); }
     QVariantMap practiceReport() const { return m_practiceReport; }
     bool loopPracticeEnabled() const { return m_loopPracticeEnabled; }
     bool loopRangeValid() const;
@@ -110,6 +114,9 @@ public slots:
     Q_INVOKABLE void refreshLocalMidiLibrary();
     Q_INVOKABLE void loadLocalMidi(int index);
     Q_INVOKABLE void openLocalMidiLibrary();
+    Q_INVOKABLE void setLocalSheetCategory(int categoryId);
+    Q_INVOKABLE void createSheetCategory(const QString &name);
+    Q_INVOKABLE void toggleLocalMidiCategory(int index, int categoryId);
     Q_INVOKABLE void setLoopStartAtCurrent();
     Q_INVOKABLE void setLoopEndAtCurrent();
     Q_INVOKABLE void toggleLoopPractice();
@@ -132,6 +139,8 @@ signals:
     void volumeChanged();
     void silentPracticeChanged();
     void localMidiLibraryChanged();
+    void sheetCategoriesChanged();
+    void sheetCategoryFilterChanged();
     void practiceReportChanged();
     void loopPracticeChanged();
     void countdownChanged();
@@ -164,6 +173,8 @@ private:
     void finishPracticeSession(bool completed);
     void refreshPracticeReport();
     QVariantMap practiceReportToVariant(const PracticeReportSummary &report) const;
+    void refreshSheetCategories();
+    QVariantMap sheetCategoryToVariant(const SheetCategoryInfo &category) const;
     qint64 loopStartTick() const;
     qint64 loopEndTick() const;
     bool tickInsideLoop(qint64 tick) const;
@@ -204,6 +215,8 @@ private:
     LocalSheetModel m_localSheetModel;
     qint64 m_currentSheetId = -1;
     QVariantMap m_practiceReport;
+    QVariantList m_sheetCategories;
+    qint64 m_currentSheetCategoryId = 0;
 
     bool m_loopStartSet = false;
     bool m_loopEndSet = false;
