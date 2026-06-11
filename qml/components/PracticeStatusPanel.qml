@@ -27,10 +27,9 @@ ColumnLayout {
         function expectedLabel() {
             if (piano.expectedNotes.length === 0)
                 return "没有待弹音符"
-            var names = []
-            for (var i = 0; i < piano.expectedNotes.length; ++i)
-                names.push(piano.expectedNotes[i].note)
-            return "当前应弹：" + names.join(" + ")
+            if (piano.expectedNotes.length === 1)
+                return "当前应弹：1 个音"
+            return "当前应弹：" + piano.expectedNotes.length + " 个音"
         }
     }
 

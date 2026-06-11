@@ -185,6 +185,15 @@ ApplicationWindow {
         }
     }
 
+    ShortcutSidebar {
+        id: shortcutSidebar
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 112
+        anchors.rightMargin: 18
+        z: 20
+    }
+
     component AppShortcut: Shortcut {
         context: Qt.ApplicationShortcut
     }

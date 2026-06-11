@@ -1,7 +1,5 @@
 #include "ui/PianoRollItem.h"
 
-#include "core/NoteUtils.h"
-
 #include <QFont>
 #include <QLinearGradient>
 #include <QPainter>
@@ -137,43 +135,50 @@ void PianoRollItem::paint(QPainter *p)
             return note.startTick < tick;
         });
 
-    QFont noteFont(QStringLiteral("Segoe UI"), 8);
-    noteFont.setBold(true);
+    const qint64 currentTick = m_controller->currentTickValue();
+    auto drawNotes = [&](bool preparatoryPass) {
+        for (auto it = first; it != notes.end(); ++it) {
+            const NoteEvent &note = *it;
+            if (note.startTick > visibleEndTick) break;
 
-    for (auto it = first; it != notes.end(); ++it) {
-        const NoteEvent &note = *it;
-        if (note.startTick > visibleEndTick) break;
+            const double startBeat = tickToBeat(note.startTick);
+            const double durationBeat = tickToBeat(note.durationTick);
+            const QRectF rect = noteRect(note.midi, startBeat, durationBeat, currentBeat,
+                                         whiteKeyWidth, fallTop, strikeY, pixelsPerBeat);
+            if (rect.bottom() < topPad || rect.top() > strikeY + 30) continue;
 
-        const double startBeat = tickToBeat(note.startTick);
-        const double durationBeat = tickToBeat(note.durationTick);
-        const QRectF rect = noteRect(note.midi, startBeat, durationBeat, currentBeat,
-                                     whiteKeyWidth, fallTop, strikeY, pixelsPerBeat);
-        if (rect.bottom() < topPad || rect.top() > strikeY + 30) continue;
+            const bool active = currentTick >= note.startTick &&
+                                currentTick <= note.startTick + note.durationTick;
+            const bool expected = practiceMode && expectedTick == note.startTick;
+            const bool preparatory = !expected && !active && !note.played && note.startTick > currentTick;
+            if (preparatory != preparatoryPass) continue;
 
-        const bool active = m_controller->currentTickValue() >= note.startTick &&
-                            m_controller->currentTickValue() <= note.startTick + note.durationTick;
-        const bool expected = practiceMode && expectedTick == note.startTick;
-        const QColor fill = expected ? QColor("#facc15")
-                          : active ? QColor("#5eead4")
-                          : note.played ? QColor("#64748b")
-                          : QColor("#38bdf8");
-        const QColor edge = expected ? QColor("#fef08a")
-                          : active ? QColor("#ccfbf1")
-                          : QColor("#bae6fd");
+            const QColor fill = expected ? QColor("#facc15")
+                              : active ? QColor("#5eead4")
+                              : note.played ? QColor("#64748b")
+                              : QColor("#38bdf8");
+            const QColor edge = expected ? QColor("#fef08a")
+                              : active ? QColor("#ccfbf1")
+                              : QColor("#bae6fd");
 
-        p->setPen(Qt::NoPen);
-        p->setBrush(withAlpha(fill, expected || active ? 0.96 : 0.86));
-        p->drawRoundedRect(rect, 6, 6);
-        p->setBrush(Qt::NoBrush);
-        p->setPen(QPen(edge, expected ? 1.5 : 1.0));
-        p->drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
+            if (preparatory) {
+                p->setBrush(Qt::NoBrush);
+                p->setPen(QPen(withAlpha(edge, 0.58), 1.1));
+                p->drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
+                continue;
+            }
 
-        if (rect.height() > 18 && rect.width() > 22) {
-            p->setPen(QColor("#020617"));
-            p->setFont(noteFont);
-            p->drawText(rect, Qt::AlignCenter, note.noteName);
+            p->setPen(Qt::NoPen);
+            p->setBrush(withAlpha(fill, expected || active ? 0.96 : 0.86));
+            p->drawRoundedRect(rect, 6, 6);
+            p->setBrush(Qt::NoBrush);
+            p->setPen(QPen(edge, expected ? 1.5 : 1.0));
+            p->drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
         }
-    }
+    };
+
+    drawNotes(true);
+    drawNotes(false);
 }
 
 double PianoRollItem::tickToBeat(qint64 tick) const

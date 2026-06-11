@@ -175,7 +175,7 @@ ColumnLayout {
         var parts = []
         var count = Math.min(5, list.length)
         for (var i = 0; i < count; ++i)
-            parts.push(list[i].note + " x" + list[i].wrong)
+            parts.push("#" + (i + 1) + " x" + list[i].wrong)
         return "常错音 Top 5：" + parts.join("  ")
     }
 
@@ -186,7 +186,7 @@ ColumnLayout {
         var parts = []
         var count = Math.min(5, list.length)
         for (var i = 0; i < count; ++i)
-            parts.push(list[i].note + " x" + list[i].missed)
+            parts.push("#" + (i + 1) + " x" + list[i].missed)
         return "漏弹音 Top 5：" + parts.join("  ")
     }
 

@@ -102,6 +102,7 @@ public:
         if (!m_synth) return;
         const int scaledVelocity = qBound(1, velocity, 127);
         QMutexLocker locker(&m_mutex);
+        m_api.noteOff(m_synth, 0, midi);
         m_api.noteOn(m_synth, 0, midi, scaledVelocity);
     }
 
@@ -493,7 +494,7 @@ bool MidiSynth::openFluidSynth()
         return false;
     }
 
-    const int sfid = api.sfLoad(synth, soundFontPath.toUtf8().constData(), 1);
+    const int sfid = api.sfLoad(synth, soundFontPath.toUtf8().constData(), 0);
     if (sfid < 0) {
         api.deleteSynth(synth);
         api.deleteSettings(settings);

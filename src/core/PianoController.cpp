@@ -763,7 +763,7 @@ void PianoController::evaluatePracticeNote(int midi, int velocity)
 
     if (result.type == PracticeJudgeType::WrongNote) {
         if (!loopSpeedAdjusted) {
-            setStatusMessage(QStringLiteral("错音：%1").arg(NoteUtils::midiToName(midi)));
+            setStatusMessage(QStringLiteral("错音"));
         }
         if (anyStatsChanged) emit statsChanged();
         return;
@@ -771,23 +771,21 @@ void PianoController::evaluatePracticeNote(int midi, int velocity)
 
     if ((result.type == PracticeJudgeType::Perfect || result.type == PracticeJudgeType::Good) &&
         !loopSpeedAdjusted) {
-        setStatusMessage(QStringLiteral("%1：%2")
-                             .arg(result.type == PracticeJudgeType::Perfect
-                                      ? QStringLiteral("Perfect")
-                                      : QStringLiteral("Good"),
-                                  NoteUtils::midiToName(midi)));
+        setStatusMessage(result.type == PracticeJudgeType::Perfect
+                             ? QStringLiteral("Perfect")
+                             : QStringLiteral("Good"));
     }
 
     if (result.type == PracticeJudgeType::Early) {
         if (!loopSpeedAdjusted) {
-            setStatusMessage(QStringLiteral("偏早：%1").arg(NoteUtils::midiToName(midi)));
+            setStatusMessage(QStringLiteral("偏早"));
         }
     }
 
     if (result.type == PracticeJudgeType::Late && !loopSpeedAdjusted) {
-        setStatusMessage(QStringLiteral("偏晚：%1").arg(NoteUtils::midiToName(midi)));
+        setStatusMessage(QStringLiteral("偏晚"));
     } else if (result.type == PracticeJudgeType::RepeatedNote) {
-        setStatusMessage(QStringLiteral("重复音：%1").arg(NoteUtils::midiToName(midi)));
+        setStatusMessage(QStringLiteral("重复音"));
     }
 
     if (anyStatsChanged) {
@@ -854,7 +852,7 @@ void PianoController::handleRhythmMisses(qint64 currentTick)
     emit notesChanged();
     emit practiceChanged();
     if (!loopSpeedAdjusted) {
-        setStatusMessage(QStringLiteral("漏弹：%1").arg(NoteUtils::midiToName(missed.last().expectedMidi)));
+        setStatusMessage(QStringLiteral("漏弹"));
     }
 }
 
@@ -1090,13 +1088,9 @@ QVariantMap PianoController::practiceReportToVariant(const PracticeReportSummary
     QString teacherTip = QStringLiteral("完成几次练习后，我会给出更具体的复练建议。");
     if (report.sessionCount > 0) {
         if (!report.topWrongNotes.isEmpty()) {
-            const PracticeMistakeStat &stat = report.topWrongNotes.first();
-            teacherTip = QStringLiteral("先慢练 %1：它是最近最常按错的音，目标是连续三次稳定命中。")
-                             .arg(stat.noteName);
+            teacherTip = QStringLiteral("先慢练最常按错的位置，目标是连续三次稳定命中。");
         } else if (!report.topMissedNotes.isEmpty()) {
-            const PracticeMistakeStat &stat = report.topMissedNotes.first();
-            teacherTip = QStringLiteral("注意 %1 的进入时机：它最近最容易漏弹，可以单独放慢练。")
-                             .arg(stat.noteName);
+            teacherTip = QStringLiteral("注意最容易漏弹的位置，可以单独放慢练。");
         } else if (report.averageScore >= 90) {
             teacherTip = QStringLiteral("整体很稳，可以逐步把速度提高 5%。");
         } else {
