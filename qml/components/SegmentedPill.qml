@@ -17,6 +17,13 @@ Item {
         color: Theme.surfaceContainer
         border.color: Theme.darkMode ? "#2A3952" : "#E3E7ED"
         border.width: 1
+
+        Behavior on color {
+            ColorAnimation {
+                duration: 150
+                easing.type: Easing.OutCubic
+            }
+        }
     }
 
     RowLayout {
@@ -37,6 +44,13 @@ Item {
                 radius: Theme.radiusPill
                 color: selected ? Theme.primary : "transparent"
 
+                Behavior on color {
+                    ColorAnimation {
+                        duration: 150
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - 10
@@ -47,6 +61,13 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 150
+                            easing.type: Easing.OutCubic
+                        }
+                    }
                 }
 
                 MouseArea {

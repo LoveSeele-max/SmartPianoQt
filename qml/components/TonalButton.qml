@@ -19,6 +19,13 @@ Button {
              : root.buttonColor
         border.color: root.highlighted ? Theme.primary : "transparent"
         border.width: root.highlighted ? 1 : 0
+
+        Behavior on color {
+            ColorAnimation {
+                duration: 140
+                easing.type: Easing.OutCubic
+            }
+        }
     }
 
     contentItem: Text {
@@ -28,5 +35,12 @@ Button {
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
+
+        Behavior on color {
+            ColorAnimation {
+                duration: 140
+                easing.type: Easing.OutCubic
+            }
+        }
     }
 }

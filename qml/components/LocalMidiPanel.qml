@@ -3,6 +3,10 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 ColumnLayout {
+    id: root
+
+    property int selectedIndex: -1
+
     Layout.fillWidth: true
     spacing: Theme.gapSm
 
@@ -143,14 +147,26 @@ ColumnLayout {
                 width: localMidiList.width
                 height: 68
                 radius: Theme.radiusMedium
-                color: mouseArea.containsMouse ? Theme.hoverSurface : Theme.surface
-                border.color: mouseArea.containsMouse ? Theme.primaryContainer : Theme.outline
+                color: root.selectedIndex === index ? Theme.primaryContainer
+                     : mouseArea.containsMouse ? Theme.hoverSurface
+                     : Theme.surface
+                border.color: root.selectedIndex === index || mouseArea.containsMouse ? Theme.primary : Theme.outline
+
+                Behavior on color {
+                    ColorAnimation {
+                        duration: 140
+                        easing.type: Easing.OutCubic
+                    }
+                }
 
                 MouseArea {
                     id: mouseArea
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: piano.loadLocalMidi(sheetDelegate.index)
+                    onClicked: {
+                        root.selectedIndex = sheetDelegate.index
+                        piano.loadLocalMidi(sheetDelegate.index)
+                    }
                 }
 
                 RowLayout {
@@ -212,7 +228,10 @@ ColumnLayout {
 
                             MenuItem {
                                 text: "加载"
-                                onTriggered: piano.loadLocalMidi(sheetDelegate.index)
+                                onTriggered: {
+                                    root.selectedIndex = sheetDelegate.index
+                                    piano.loadLocalMidi(sheetDelegate.index)
+                                }
                             }
 
                             MenuSeparator {}
@@ -238,12 +257,19 @@ ColumnLayout {
                 }
             }
 
-            Label {
+            EmptyState {
                 anchors.centerIn: parent
+                width: parent.width
                 visible: localMidiList.count === 0
-                text: piano.currentSheetCategoryId === 0 ? "没有 MIDI 文件" : "此分类暂无 MIDI 曲谱"
-                color: Theme.textMuted
-                font.pixelSize: Theme.fontBody
+                iconText: "▤"
+                title: piano.currentSheetCategoryId === 0 ? "没有 MIDI 文件" : "此分类暂无 MIDI 曲谱"
+                detail: piano.currentSheetCategoryId === 0
+                    ? "把 .mid / .midi 放入 midi_library，或打开目录导入。"
+                    : "切换分类，或给已练过的曲谱添加这个分类。"
+                actionText: piano.currentSheetCategoryId === 0 ? "目录" : "刷新"
+                onAction: piano.currentSheetCategoryId === 0
+                    ? piano.openLocalMidiLibrary()
+                    : piano.refreshLocalMidiLibrary()
             }
         }
     }

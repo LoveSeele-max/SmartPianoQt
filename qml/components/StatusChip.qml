@@ -14,6 +14,13 @@ Rectangle {
     radius: Theme.radiusPill
     color: chipColor
 
+    Behavior on color {
+        ColorAnimation {
+            duration: 150
+            easing.type: Easing.OutCubic
+        }
+    }
+
     Label {
         id: label
         anchors.fill: parent
@@ -25,5 +32,12 @@ Rectangle {
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
+
+        Behavior on color {
+            ColorAnimation {
+                duration: 150
+                easing.type: Easing.OutCubic
+            }
+        }
     }
 }

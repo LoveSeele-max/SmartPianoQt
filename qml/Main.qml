@@ -16,6 +16,13 @@ ApplicationWindow {
     property bool rollSettingsOpen: false
     readonly property bool globalShortcutsEnabled: !textInputHasFocus(activeFocusItem)
 
+    Behavior on color {
+        ColorAnimation {
+            duration: 160
+            easing.type: Easing.OutCubic
+        }
+    }
+
     function textInputHasFocus(item) {
         while (item) {
             if (item instanceof TextInput ||

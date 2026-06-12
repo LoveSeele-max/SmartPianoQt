@@ -52,4 +52,13 @@ ColumnLayout {
         font.pixelSize: Theme.fontCaption
         elide: Text.ElideRight
     }
+
+    EmptyState {
+        visible: midiInput.inputPorts.length === 0
+        iconText: "◉"
+        title: "未检测到 MIDI 设备"
+        detail: "连接电钢琴或 MIDI 键盘后刷新设备列表。"
+        actionText: "刷新"
+        onAction: midiInput.refreshPorts()
+    }
 }

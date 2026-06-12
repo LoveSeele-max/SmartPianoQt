@@ -32,24 +32,28 @@ MaterialCard {
         spacing: Theme.gapSm
 
         TonalButton {
-            text: ">"
+            text: "›"
             Layout.fillWidth: true
             Layout.preferredHeight: 42
             onClicked: root.collapsed = false
+
+            ToolTip.text: "展开侧栏"
+            ToolTip.visible: hovered
         }
 
         Repeater {
             model: ListModel {
-                ListElement { label: "练"; tabIndex: 0 }
-                ListElement { label: "谱"; tabIndex: 1 }
-                ListElement { label: "设"; tabIndex: 2 }
+                ListElement { glyph: "♪"; tip: "练习"; tabIndex: 0 }
+                ListElement { glyph: "▤"; tip: "曲谱库"; tabIndex: 1 }
+                ListElement { glyph: "◉"; tip: "设备"; tabIndex: 2 }
             }
 
             delegate: TonalButton {
-                required property string label
+                required property string glyph
+                required property string tip
                 required property int tabIndex
 
-                text: label
+                text: glyph
                 Layout.fillWidth: true
                 Layout.preferredHeight: 42
                 highlighted: root.currentTab === tabIndex
@@ -57,6 +61,9 @@ MaterialCard {
                     root.currentTab = tabIndex
                     root.collapsed = false
                 }
+
+                ToolTip.text: tip
+                ToolTip.visible: hovered
             }
         }
 
@@ -65,10 +72,13 @@ MaterialCard {
         }
 
         TonalButton {
-            text: "专"
+            text: "⛶"
             Layout.fillWidth: true
             Layout.preferredHeight: 42
             onClicked: root.focusRequested()
+
+            ToolTip.text: "专注模式"
+            ToolTip.visible: hovered
         }
     }
 

@@ -56,6 +56,7 @@ qt_add_qml_module(SmartPianoQt
     QML_FILES
         qml/Main.qml
         qml/components/ControlPanel.qml
+        qml/components/EmptyState.qml
         qml/components/MidiInputPanel.qml
         qml/components/PianoRollSettingsPanel.qml
         qml/components/PianoRollSettings.qml

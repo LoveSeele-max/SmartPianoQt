@@ -13,6 +13,13 @@ Rectangle {
     border.color: strokeColor
     border.width: 1
 
+    Behavior on color {
+        ColorAnimation {
+            duration: 160
+            easing.type: Easing.OutCubic
+        }
+    }
+
     Item {
         id: content
         anchors.fill: parent
