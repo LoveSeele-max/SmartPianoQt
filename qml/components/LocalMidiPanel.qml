@@ -100,7 +100,7 @@ ColumnLayout {
 
     MaterialCard {
         Layout.fillWidth: true
-        Layout.preferredHeight: 330
+        Layout.preferredHeight: 390
         padding: 6
         cardColor: Theme.surfaceContainer
         strokeColor: "transparent"
@@ -135,8 +135,13 @@ ColumnLayout {
                         : "未分类"
                 }
 
+                function detailText() {
+                    var details = knownSheet && noteCount > 0 ? noteCount + " notes" : sizeKb + " KB"
+                    return knownSheet ? details : details + " · 新曲"
+                }
+
                 width: localMidiList.width
-                height: 62
+                height: 68
                 radius: Theme.radiusMedium
                 color: mouseArea.containsMouse ? Theme.hoverSurface : Theme.surface
                 border.color: mouseArea.containsMouse ? Theme.primaryContainer : Theme.outline
@@ -185,23 +190,32 @@ ColumnLayout {
                                 textColor: knownSheet ? Theme.success : Theme.textSecondary
                                 horizontalPadding: 8
                             }
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: sheetDelegate.detailText()
+                                color: Theme.textMuted
+                                font.pixelSize: 10
+                                elide: Text.ElideRight
+                            }
                         }
                     }
 
-                    Label {
-                        text: knownSheet ? (noteCount > 0 ? noteCount + " notes" : "tracked") : sizeKb + " KB"
-                        color: Theme.textMuted
-                        font.pixelSize: 10
-                    }
-
                     TonalButton {
-                        text: "分类"
-                        Layout.preferredWidth: 54
-                        enabled: knownSheet
-                        onClicked: categoryMenu.open()
+                        text: "⋮"
+                        Layout.preferredWidth: 38
+                        Layout.preferredHeight: 34
+                        onClicked: sheetMenu.open()
 
                         Menu {
-                            id: categoryMenu
+                            id: sheetMenu
+
+                            MenuItem {
+                                text: "加载"
+                                onTriggered: piano.loadLocalMidi(sheetDelegate.index)
+                            }
+
+                            MenuSeparator {}
 
                             Instantiator {
                                 model: piano.sheetCategories
@@ -209,14 +223,15 @@ ColumnLayout {
                                 delegate: MenuItem {
                                     required property var modelData
                                     visible: Number(modelData.id) > 0
+                                    enabled: sheetDelegate.knownSheet
                                     text: modelData.name
                                     checkable: true
                                     checked: sheetDelegate.hasCategory(Number(modelData.id))
                                     onTriggered: piano.toggleLocalMidiCategory(sheetDelegate.index, Number(modelData.id))
                                 }
 
-                                onObjectAdded: (index, object) => categoryMenu.insertItem(index, object)
-                                onObjectRemoved: (index, object) => categoryMenu.removeItem(object)
+                                onObjectAdded: (index, object) => sheetMenu.insertItem(index + 2, object)
+                                onObjectRemoved: (index, object) => sheetMenu.removeItem(object)
                             }
                         }
                     }

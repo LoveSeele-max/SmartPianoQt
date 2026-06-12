@@ -6,29 +6,41 @@ ColumnLayout {
     Layout.fillWidth: true
     spacing: Theme.gapSm
 
-    GridLayout {
-        columns: 3
+    Rectangle {
         Layout.fillWidth: true
-        rowSpacing: Theme.gapSm
-        columnSpacing: Theme.gapSm
+        Layout.preferredHeight: 40
+        radius: Theme.radiusPill
+        color: Theme.surfaceContainer
+        border.color: Theme.darkMode ? "#2A3952" : "#E3E7ED"
+        border.width: 1
 
-        StatBox {
-            title: "正确"
-            value: piano.correctCount
-            accent: Theme.success
-            fill: Theme.successContainer
-        }
-        StatBox {
-            title: "错音"
-            value: piano.wrongCount
-            accent: Theme.warningText
-            fill: Theme.warningContainer
-        }
-        StatBox {
-            title: "漏弹"
-            value: piano.missedCount
-            accent: Theme.error
-            fill: Theme.errorContainer
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.gapMd
+            anchors.rightMargin: Theme.gapMd
+            spacing: Theme.gapXs
+
+            StatText {
+                title: "正确"
+                value: piano.correctCount
+                accent: Theme.success
+            }
+
+            Dot {}
+
+            StatText {
+                title: "错音"
+                value: piano.wrongCount
+                accent: Theme.warningText
+            }
+
+            Dot {}
+
+            StatText {
+                title: "漏弹"
+                value: piano.missedCount
+                accent: Theme.error
+            }
         }
     }
 
@@ -95,35 +107,34 @@ ColumnLayout {
         return parts.join(" ")
     }
 
-    component StatBox: Rectangle {
+    component Dot: Label {
+        text: "·"
+        color: Theme.textMuted
+        font.pixelSize: Theme.fontBody
+        Layout.alignment: Qt.AlignVCenter
+    }
+
+    component StatText: RowLayout {
         required property string title
         required property int value
         required property color accent
-        required property color fill
 
+        spacing: 3
         Layout.fillWidth: true
-        height: 64
-        radius: Theme.radiusMedium
-        color: fill
 
-        Column {
-            anchors.centerIn: parent
-            spacing: 2
+        Label {
+            text: title
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontCaption
+            Layout.alignment: Qt.AlignVCenter
+        }
 
-            Label {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: title
-                color: Theme.textSecondary
-                font.pixelSize: Theme.fontCaption
-            }
-
-            Label {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: value
-                color: parent.parent.accent
-                font.pixelSize: 20
-                font.bold: true
-            }
+        Label {
+            text: value
+            color: parent.accent
+            font.pixelSize: Theme.fontBody
+            font.bold: true
+            Layout.alignment: Qt.AlignVCenter
         }
     }
 
@@ -136,32 +147,35 @@ ColumnLayout {
         required property color fill
 
         Layout.fillWidth: true
-        height: 58
-        radius: Theme.radiusMedium
+        Layout.preferredHeight: 44
+        radius: Theme.radiusPill
         color: selected ? fill : Theme.surfaceContainer
         border.color: selected ? accent : Theme.outline
         border.width: selected ? 1 : 0
         opacity: muted ? 0.52 : 1.0
 
-        Column {
+        RowLayout {
             anchors.fill: parent
-            anchors.margins: Theme.gapSm
-            spacing: 3
+            anchors.leftMargin: Theme.gapSm
+            anchors.rightMargin: Theme.gapSm
+            spacing: Theme.gapSm
 
             Label {
                 text: title
                 color: selected ? accent : Theme.textSecondary
                 font.pixelSize: Theme.fontCaption
                 font.bold: true
+                Layout.alignment: Qt.AlignVCenter
             }
 
             Label {
-                width: parent.width
+                Layout.fillWidth: true
                 text: handNotesText(notes)
                 color: selected ? Theme.textPrimary : Theme.textSecondary
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.fontCaption
                 font.bold: selected
                 elide: Text.ElideRight
+                Layout.alignment: Qt.AlignVCenter
             }
         }
     }

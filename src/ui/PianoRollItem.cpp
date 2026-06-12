@@ -227,7 +227,7 @@ void PianoRollItem::paint(QPainter *p)
     titleFont.setBold(true);
     p->setFont(titleFont);
     p->drawText(QRectF(14, 0, w - 28, topPad), Qt::AlignVCenter | Qt::AlignLeft,
-                QStringLiteral("瀑布视图 · 音符落到判定线时演奏"));
+                QStringLiteral("Piano Roll"));
 
     const auto &notes = m_controller->noteEvents();
     const qint64 searchStartTick = qMax<qint64>(0, visibleStartTick - qint64(m_controller->ppq()) * 8);

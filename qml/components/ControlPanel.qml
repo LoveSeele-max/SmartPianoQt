@@ -190,7 +190,7 @@ MaterialCard {
 
             MaterialCard {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 116
+                Layout.preferredHeight: 216
                 padding: Theme.gapSm
                 cardColor: Theme.surfaceContainer
                 strokeColor: "transparent"
@@ -216,7 +216,41 @@ MaterialCard {
 
                     Label {
                         Layout.fillWidth: true
-                        text: "当前音量 " + Math.round(piano.volume * 100 / 127) + "%"
+                        text: "Volume " + Math.round(piano.volume * 100 / 127) + "%"
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
+                        font.bold: true
+                    }
+
+                    Slider {
+                        Layout.fillWidth: true
+                        from: 0
+                        to: 127
+                        stepSize: 1
+                        value: piano.volume
+                        onMoved: piano.volume = Math.round(value)
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gapSm
+
+                        Label {
+                            text: "静音练习"
+                            color: Theme.textSecondary
+                            font.pixelSize: Theme.fontBody
+                            Layout.fillWidth: true
+                        }
+
+                        Switch {
+                            checked: piano.silentPracticeEnabled
+                            onToggled: piano.silentPracticeEnabled = checked
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: "SoundFont / FluidSynth 状态在这里查看"
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontCaption
                     }

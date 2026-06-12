@@ -3,8 +3,16 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 ColumnLayout {
+    id: root
+
     Layout.fillWidth: true
     spacing: Theme.gapMd
+
+    function handTargetValue() {
+        if (!piano.handPracticeEnabled)
+            return "both"
+        return piano.handPracticeSide
+    }
 
     ColumnLayout {
         Layout.fillWidth: true
@@ -40,63 +48,20 @@ ColumnLayout {
 
         SectionTitle { text: "练习对象" }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.gapSm
-
-            TonalButton {
-                text: "双手"
-                Layout.fillWidth: true
-                highlighted: !piano.handPracticeEnabled
-                onClicked: piano.handPracticeEnabled = false
-            }
-
-            TonalButton {
-                text: "右"
-                Layout.fillWidth: true
-                highlighted: piano.handPracticeEnabled && piano.handPracticeSide === "right"
-                onClicked: {
-                    piano.handPracticeSide = "right"
-                    piano.handPracticeEnabled = true
+        SegmentedPill {
+            options: [
+                { label: "双手", value: "both" },
+                { label: "右手", value: "right" },
+                { label: "左手", value: "left" }
+            ]
+            currentValue: root.handTargetValue()
+            onSelected: value => {
+                if (value === "both") {
+                    piano.handPracticeEnabled = false
+                    return
                 }
-            }
-
-            TonalButton {
-                text: "左"
-                Layout.fillWidth: true
-                highlighted: piano.handPracticeEnabled && piano.handPracticeSide === "left"
-                onClicked: {
-                    piano.handPracticeSide = "left"
-                    piano.handPracticeEnabled = true
-                }
-            }
-        }
-
-        SectionTitle { text: "瀑布显示" }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.gapSm
-
-            TonalButton {
-                text: "目标"
-                Layout.fillWidth: true
-                highlighted: PianoRollSettings.handDisplayMode === "target"
-                onClicked: PianoRollSettings.handDisplayMode = "target"
-            }
-
-            TonalButton {
-                text: "淡显"
-                Layout.fillWidth: true
-                highlighted: PianoRollSettings.handDisplayMode === "dim"
-                onClicked: PianoRollSettings.handDisplayMode = "dim"
-            }
-
-            TonalButton {
-                text: "全部"
-                Layout.fillWidth: true
-                highlighted: PianoRollSettings.handDisplayMode === "all"
-                onClicked: PianoRollSettings.handDisplayMode = "all"
+                piano.handPracticeSide = value
+                piano.handPracticeEnabled = true
             }
         }
 
@@ -104,96 +69,10 @@ ColumnLayout {
             Layout.fillWidth: true
             text: piano.handPracticeEnabled
                   ? "按 C4 自动分割，只判定" + (piano.handPracticeSide === "left" ? "左手" : "右手") + "音符"
-                  : "按完整和弦判定，左右手以 C4 分割显示"
+                  : "完整判定，左右手识别默认按 C4 分割"
             color: Theme.textMuted
             font.pixelSize: Theme.fontCaption
             elide: Text.ElideRight
-        }
-    }
-
-    ColumnLayout {
-        Layout.fillWidth: true
-        spacing: Theme.gapSm
-
-        ValueHeader {
-            title: "Waterfall"
-            value: Math.round(PianoRollSettings.speedScale * 100) + "%"
-        }
-
-        Slider {
-            Layout.fillWidth: true
-            from: 65
-            to: 155
-            stepSize: 5
-            value: PianoRollSettings.speedScale * 100
-            onMoved: PianoRollSettings.speedScale = Math.round(value) / 100
-        }
-
-        ValueHeader {
-            title: "Look Ahead"
-            value: PianoRollSettings.lookAheadBeats.toFixed(1) + " beats"
-        }
-
-        Slider {
-            Layout.fillWidth: true
-            from: 3
-            to: 12
-            stepSize: 0.5
-            value: PianoRollSettings.lookAheadBeats
-            onMoved: PianoRollSettings.lookAheadBeats = value
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.gapSm
-
-            Label {
-                text: "Beat ruler"
-                color: Theme.textSecondary
-                font.pixelSize: Theme.fontBody
-                Layout.fillWidth: true
-            }
-
-            Switch {
-                checked: PianoRollSettings.beatRulerVisible
-                onToggled: PianoRollSettings.beatRulerVisible = checked
-            }
-        }
-    }
-
-    ColumnLayout {
-        Layout.fillWidth: true
-        spacing: Theme.gapSm
-
-        ValueHeader {
-            title: "Volume"
-            value: Math.round(piano.volume * 100 / 127) + "%"
-        }
-
-        Slider {
-            Layout.fillWidth: true
-            from: 0
-            to: 127
-            stepSize: 1
-            value: piano.volume
-            onMoved: piano.volume = Math.round(value)
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.gapSm
-
-            Label {
-                text: "Silent Practice"
-                color: Theme.textSecondary
-                font.pixelSize: Theme.fontBody
-                Layout.fillWidth: true
-            }
-
-            Switch {
-                checked: piano.silentPracticeEnabled
-                onToggled: piano.silentPracticeEnabled = checked
-            }
         }
     }
 

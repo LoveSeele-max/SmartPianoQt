@@ -13,6 +13,7 @@ ApplicationWindow {
     title: "SmartPianoQt"
     color: Theme.window
     property bool focusMode: false
+    property bool rollSettingsOpen: false
     readonly property bool globalShortcutsEnabled: !textInputHasFocus(activeFocusItem)
 
     function textInputHasFocus(item) {
@@ -53,8 +54,30 @@ ApplicationWindow {
 
     function setFocusMode(enabled) {
         focusMode = enabled
-        if (!focusMode)
+        if (focusMode) {
+            rollSettingsOpen = false
             shortcutSidebar.expanded = false
+        }
+        if (!focusMode)
+            focusShortcutSidebar.expanded = false
+    }
+
+    function handTargetLabel() {
+        if (!piano.handPracticeEnabled)
+            return "双手"
+        return piano.handPracticeSide === "left" ? "左手" : "右手"
+    }
+
+    function focusHudText() {
+        var parts = [
+            modeLabel(),
+            handTargetLabel(),
+            piano.playbackSpeed + "%"
+        ]
+        if (piano.loopPracticeEnabled && piano.loopRangeValid)
+            parts.push("循环 A " + piano.loopStartBeat.toFixed(1) + " / B " + piano.loopEndBeat.toFixed(1))
+        parts.push("正 " + piano.correctCount + " 错 " + piano.wrongCount + " 漏 " + piano.missedCount)
+        return parts.join(" · ")
     }
 
     FileDialog {
@@ -221,7 +244,7 @@ ApplicationWindow {
                     }
 
                     Label {
-                        text: piano.statusMessage + "  |  " + piano.audioStatus
+                        text: piano.statusMessage
                         color: Theme.textSecondary
                         font.pixelSize: Theme.fontBody
                         elide: Text.ElideRight
@@ -272,7 +295,20 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: root.focusMode ? 0 : Theme.gapLg
 
+            ShortcutSidebar {
+                id: focusShortcutSidebar
+                visible: root.focusMode && expanded
+                Layout.alignment: Qt.AlignTop
+                z: 8
+
+                onVisibleChanged: {
+                    if (!visible)
+                        expanded = false
+                }
+            }
+
             ControlPanel {
+                id: controlPanel
                 visible: !root.focusMode
                 onFocusRequested: root.setFocusMode(true)
             }
@@ -301,6 +337,33 @@ ApplicationWindow {
                             showBeatRuler: PianoRollSettings.beatRulerVisible
                             splitMidi: PianoRollSettings.splitMidi
                             handDisplayMode: PianoRollSettings.handDisplayMode
+                        }
+
+                        TonalButton {
+                            id: rollSettingsButton
+                            visible: !root.focusMode
+                            text: "⚙"
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.topMargin: 10
+                            anchors.rightMargin: 10
+                            width: 42
+                            height: 36
+                            z: 12
+                            highlighted: root.rollSettingsOpen
+                            onClicked: root.rollSettingsOpen = !root.rollSettingsOpen
+
+                            ToolTip.text: "瀑布设置"
+                            ToolTip.visible: hovered
+                        }
+
+                        PianoRollSettingsPanel {
+                            visible: root.rollSettingsOpen && !root.focusMode
+                            anchors.top: rollSettingsButton.bottom
+                            anchors.right: parent.right
+                            anchors.topMargin: Theme.gapSm
+                            anchors.rightMargin: 10
+                            z: 13
                         }
 
                         Rectangle {
@@ -340,12 +403,15 @@ ApplicationWindow {
 
     ShortcutSidebar {
         id: shortcutSidebar
-        visible: !root.focusMode || expanded
-        anchors.top: parent.top
-        anchors.right: parent.right
-        anchors.topMargin: root.focusMode ? 68 : 104
-        anchors.rightMargin: Theme.gapLg
+        visible: !root.focusMode && !controlPanel.collapsed
+        x: parent ? controlPanel.mapToItem(parent, Theme.gapMd, 0).x : 0
+        y: parent ? controlPanel.mapToItem(parent, 0, controlPanel.height - height - Theme.gapMd).y : 0
         z: 20
+
+        onVisibleChanged: {
+            if (!visible)
+                expanded = false
+        }
     }
 
     RowLayout {
@@ -360,13 +426,42 @@ ApplicationWindow {
         TonalButton {
             text: "?"
             Layout.preferredWidth: 48
-            onClicked: shortcutSidebar.expanded = !shortcutSidebar.expanded
+            highlighted: focusShortcutSidebar.expanded
+            onClicked: focusShortcutSidebar.expanded = !focusShortcutSidebar.expanded
         }
 
         PrimaryButton {
             text: "退出专注"
             Layout.preferredWidth: 96
             onClicked: root.setFocusMode(false)
+        }
+    }
+
+    Rectangle {
+        visible: root.focusMode
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: Theme.gapMd
+        width: Math.min(parent.width - 260, focusHudLabel.implicitWidth + 36)
+        height: 34
+        radius: Theme.radiusPill
+        color: Theme.darkMode ? "#111827D9" : "#FFFFFFDB"
+        border.color: Theme.darkMode ? "#334155" : "#DADCE0"
+        border.width: 1
+        z: 25
+
+        Label {
+            id: focusHudLabel
+            anchors.fill: parent
+            anchors.leftMargin: Theme.gapMd
+            anchors.rightMargin: Theme.gapMd
+            text: root.focusHudText()
+            color: Theme.textPrimary
+            font.pixelSize: Theme.fontCaption
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
         }
     }
 
