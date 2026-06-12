@@ -95,6 +95,14 @@ include(CTest)
 if(BUILD_TESTING)
     add_executable(SmartPianoQtTests
         tests/test_core.cpp
+        tests/test_midi_input.cpp
+        tests/test_midi_parser.cpp
+        tests/test_note_json.cpp
+        tests/test_playback.cpp
+        tests/test_practice_engine.cpp
+        tests/test_practice_record_store.cpp
+        tests/test_support.cpp
+        tests/test_support.h
         src/core/NoteUtils.cpp
         src/core/NoteUtils.h
         src/core/Song.h

@@ -2,6 +2,7 @@ build/
 out/
 .qtcreator/
 *.user
+CMakeUserPresets.json
 *.autosave
 *.qmlc
 *.jsc

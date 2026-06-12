@@ -24,27 +24,43 @@ SmartPianoQt 是 Smart Piano 的 Qt 6 桌面版。当前版本已经跑通“练
 - GitHub Actions CI 会自动构建并运行核心测试。
 - 内置《小星星》示例曲。
 
-## 本机环境
+## 开发环境
 
-当前工程已在这套环境下验证通过：
+推荐和已验证的环境：
 
-- Qt 6.11.1 MinGW 64-bit：`D:\Qt\6.11.1\mingw_64`
-- MinGW：`D:\mingw64\bin`
-- CMake 4.3.1
+- 本地开发：Qt 6.11.1 + MinGW 64-bit
+- CI 验证：Qt 6.6.3 + Visual Studio 2022 x64
+- 最低 Qt 版本：Qt 6.5，对应 [CMakeLists.txt](CMakeLists.txt) 中的 `find_package(Qt6 6.5 ...)`
+- 最低 CMake 版本：3.21
 
-如果 Qt 安装目录不同，可以在构建或运行前设置 `QT_PREFIX`。
+如果 Qt 不在系统默认搜索路径里，建议设置：
+
+```powershell
+$env:QT_PREFIX = "C:\Qt\6.11.1\mingw_64"
+```
+
+MSVC / CI 风格构建也可以使用 `QT_ROOT_DIR` 或 `CMAKE_PREFIX_PATH`。
 
 ## 构建
 
+推荐使用 [CMakePresets.json](CMakePresets.json)：
+
 ```powershell
-cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_PREFIX_PATH=D:\Qt\6.11.1\mingw_64
-cmake --build build --parallel 4
+$env:QT_PREFIX = "C:\Qt\6.11.1\mingw_64"
+cmake --preset windows-mingw-debug
+cmake --build --preset windows-mingw-debug
 ```
 
-或者使用自己的 Qt 路径：
+Release / CI 风格构建：
 
 ```powershell
-$env:QT_PREFIX = "D:\Qt\6.11.1\mingw_64"
+cmake --preset windows-msvc-release
+cmake --build --preset windows-msvc-release
+```
+
+如果不用 presets，也可以继续手动指定：
+
+```powershell
 cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_PREFIX_PATH=$env:QT_PREFIX
 cmake --build build --parallel 4
 ```
@@ -55,7 +71,15 @@ cmake --build build --parallel 4
 ctest --test-dir build --output-on-failure
 ```
 
+使用 presets 时：
+
+```powershell
+ctest --preset windows-mingw-debug
+```
+
 当前测试覆盖 NoteUtils、JSON parser、MIDI parser、MIDI 输入过滤、tempo map 播放推进、PlaybackEngine 状态推进、PracticeEngine 核心判定、节奏 timing score、SQLite 练习记录和练习报告查询。
+
+测试源码按领域拆分在 [tests](tests) 目录下，`test_core.cpp` 只保留统一 runner。
 
 ## 运行
 
@@ -63,11 +87,18 @@ ctest --test-dir build --output-on-failure
 .\run.ps1
 ```
 
-如果 Qt 不在默认位置：
+`run.ps1` 会按以下顺序查找运行环境：
+
+- `SMARTPIANO_EXE` 或常见 build 输出目录里的 `SmartPianoQt.exe`
+- `QT_PREFIX`、`QT_ROOT_DIR`、`CMAKE_PREFIX_PATH` 或常见 Qt 安装目录
+- `MINGW_BIN`、`MINGW_PREFIX` 或常见 MinGW / MSYS2 / Qt Tools 目录
+- `FLUIDSYNTH_DLL`、`FLUIDSYNTH_PREFIX` 或常见 FluidSynth 安装目录
+
+常用示例：
 
 ```powershell
-$env:QT_PREFIX = "D:\Qt\6.11.1\mingw_64"
-.\run.ps1
+$env:QT_PREFIX = "C:\Qt\6.11.1\mingw_64"
+.\run.ps1 -BuildDir build\mingw-debug
 ```
 
 ## JSON 曲谱格式
@@ -115,34 +146,36 @@ $env:QT_PREFIX = "D:\Qt\6.11.1\mingw_64"
 
 如果没有检测到 FluidSynth 或 SoundFont，应用会自动退回内置柔和钢琴合成器。
 
-`run.ps1` 会在启动时自动连接 SoundFont：如果 [soundfonts](soundfonts) 里还没有 `.sf2/.sf3`，会优先从 `SMARTPIANO_SOUNDFONT`、`SOUNDFONT_PATH` 或下面这个本机目录寻找音色文件，并把它链接到项目的 `soundfonts/` 目录：
-
-```text
-E:\UprightPianoKW-SF2-20220221
-```
+`run.ps1` 会在启动时自动连接 SoundFont：如果 [soundfonts](soundfonts) 里还没有 `.sf2/.sf3`，会优先从 `SMARTPIANO_SOUNDFONT`、`SOUNDFONT_PATH`、`Documents\SoundFonts` 和 `Downloads` 寻找音色文件，并把它链接到项目的 `soundfonts/` 目录。
 
 如果 SoundFont 在别的位置，可以设置：
 
 ```powershell
-$env:SMARTPIANO_SOUNDFONT = "D:\path\to\piano.sf2"
+$env:SMARTPIANO_SOUNDFONT = "C:\path\to\piano.sf2"
 ```
 
-FluidSynth 本机运行库也已支持默认识别这个路径：
-
-```text
-E:\fluidsynth-v2.5.4-win10-x64-cpp11
-```
-
-如果 FluidSynth 安装在别的位置，可以设置：
+如果 FluidSynth 安装在自定义位置，可以设置：
 
 ```powershell
-$env:FLUIDSYNTH_PREFIX = "E:\fluidsynth-v2.5.4-win10-x64-cpp11"
+$env:FLUIDSYNTH_PREFIX = "C:\path\to\fluidsynth"
 ```
 
 参考入口：
 
 - FluidSynth 下载：https://www.fluidsynth.org/download/
 - MuseScore SoundFont 说明：https://musescore.org/en/handbook/4/soundfonts
+
+## 已知限制
+
+- MIDI 输入后端当前主要面向 Windows WinMM，macOS / Linux 输入设备支持仍在路线图中。
+- 目前还没有正式安装包或 Release artifact，需要从源码构建运行。
+- FluidSynth 和 SoundFont 是可选增强；缺失时会自动使用内置合成器。
+- 示例曲和测试覆盖还在扩展中，复杂 MIDI 文件仍建议保留人工验收。
+- README 截图 / GIF、FAQ 和完整架构图后续补充。
+
+## License
+
+本项目使用 [MIT License](LICENSE)。
 
 ## 下一步
 
