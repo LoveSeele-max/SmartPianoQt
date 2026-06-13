@@ -1,6 +1,7 @@
 #include "core/HandPractice.h"
 
 #include <QtGlobal>
+#include <algorithm>
 
 namespace HandPractice {
 
@@ -19,30 +20,60 @@ int normalizeSplitMidi(int midi)
     return qBound(0, midi, 127);
 }
 
+ReferenceDisplayMode referenceDisplayModeFromName(const QString &mode)
+{
+    if (mode == QStringLiteral("dim")) {
+        return ReferenceDisplayMode::Dim;
+    }
+    if (mode == QStringLiteral("all")) {
+        return ReferenceDisplayMode::All;
+    }
+    return ReferenceDisplayMode::TargetOnly;
+}
+
 bool midiIsLeftHand(int midi, int splitMidi)
 {
     return midi < normalizeSplitMidi(splitMidi);
 }
 
+Side classifyMidi(int midi, const Filter &filter)
+{
+    switch (filter.policy) {
+    case ClassificationPolicy::SplitMidi:
+        return midiIsLeftHand(midi, filter.splitMidi) ? Side::Left : Side::Right;
+    }
+    return Side::Right;
+}
+
+Side classifyNote(const NoteEvent &note, const Filter &filter)
+{
+    return classifyMidi(note.midi, filter);
+}
+
 bool midiMatchesSide(int midi, Side side, int splitMidi)
 {
-    const bool left = midiIsLeftHand(midi, splitMidi);
-    return side == Side::Left ? left : !left;
+    Filter filter;
+    filter.splitMidi = splitMidi;
+    return classifyMidi(midi, filter) == side;
 }
 
 bool midiMatchesFilter(int midi, const Filter &filter)
 {
-    return !filter.enabled || midiMatchesSide(midi, filter.side, filter.splitMidi);
+    return !filter.enabled || classifyMidi(midi, filter) == filter.side;
 }
 
 bool noteIsLeftHand(const NoteEvent &note, int splitMidi)
 {
-    return midiIsLeftHand(note.midi, splitMidi);
+    Filter filter;
+    filter.splitMidi = splitMidi;
+    return classifyNote(note, filter) == Side::Left;
 }
 
 bool noteMatchesSide(const NoteEvent &note, Side side, int splitMidi)
 {
-    return midiMatchesSide(note.midi, side, splitMidi);
+    Filter filter;
+    filter.splitMidi = splitMidi;
+    return classifyNote(note, filter) == side;
 }
 
 bool noteMatchesFilter(const NoteEvent &note, const Filter &filter)
@@ -81,6 +112,65 @@ bool sameNoteIdentity(const NoteEvent &a, const NoteEvent &b)
 bool noteMatchesCompletedStep(const NoteEvent &note, qint64 completedTick, const Filter &filter)
 {
     return note.startTick == completedTick && noteMatchesFilter(note, filter);
+}
+
+bool noteShouldBePlayedBeforeTick(const NoteEvent &note, qint64 tick, const Filter &filter)
+{
+    return note.startTick < tick && noteMatchesFilter(note, filter);
+}
+
+NoteDisplayState displayStateForNote(const NoteEvent &note, const NoteDisplayContext &context)
+{
+    NoteDisplayState state;
+    state.target = noteMatchesFilter(note, context.filter);
+    state.reference = context.filter.enabled && !state.target;
+
+    if (state.target) {
+        const bool withinTick = context.currentTick >= note.startTick &&
+            context.currentTick <= note.startTick + note.durationTick;
+        state.active = withinTick;
+        state.completed = note.played;
+
+        if (context.practiceMode) {
+            state.expected = std::any_of(context.expectedNotes.begin(),
+                                         context.expectedNotes.end(),
+                                         [&](const NoteEvent &expectedNote) {
+                                             return sameNoteIdentity(note, expectedNote);
+                                         });
+        }
+    }
+
+    state.preparatory = state.target &&
+        !state.expected &&
+        !state.active &&
+        !state.completed &&
+        note.startTick > context.currentTick;
+
+    if (state.expected) {
+        state.visual = NoteVisualState::Expected;
+    } else if (state.active) {
+        state.visual = NoteVisualState::Active;
+    } else if (state.completed) {
+        state.visual = NoteVisualState::Completed;
+    } else if (state.preparatory) {
+        state.visual = NoteVisualState::Preparatory;
+    } else if (state.reference) {
+        state.visual = NoteVisualState::Reference;
+    } else {
+        state.visual = NoteVisualState::Normal;
+    }
+
+    return state;
+}
+
+bool displayStateVisible(const NoteDisplayState &state, ReferenceDisplayMode mode)
+{
+    return !state.reference || mode != ReferenceDisplayMode::TargetOnly;
+}
+
+bool displayStateDimmed(const NoteDisplayState &state, ReferenceDisplayMode mode)
+{
+    return state.reference && mode == ReferenceDisplayMode::Dim;
 }
 
 } // namespace HandPractice

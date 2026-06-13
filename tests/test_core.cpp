@@ -14,7 +14,12 @@ int main(int argc, char *argv[])
     testJsonParserSkipsOutOfRangeMidi();
     testJsonParserUsesFixedPpqAfterNonDefaultMidi();
     testHandPracticeFiltersTargetHand();
+    testHandPracticeDisplayStateRules();
+    testHandPracticeDisplayReferenceModes();
+    testHandPracticeExpectedStateRebuildsForHandChanges();
     testHandPracticeCompletedStepTargetsOnlySelectedHand();
+    testHandPracticePlayedBeforeTickRespectsTargetHand();
+    testHandPracticeIgnoresReferenceInputBeforeJudgement();
     testHandPracticeNoteIdentityFallsBackWithoutIds();
     testMidiSustainAndTempo();
     testMidiUnclosedNoteFallback();

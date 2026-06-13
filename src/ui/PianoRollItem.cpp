@@ -222,8 +222,9 @@ void PianoRollItem::paint(QPainter *p)
             return note.startTick < tick;
         });
 
-    const qint64 currentTick = m_controller->currentTickValue();
     const qreal pulse = 0.5 + 0.5 * std::sin(double(m_animationClock.elapsed()) / 260.0);
+    const HandPractice::ReferenceDisplayMode referenceMode =
+        HandPractice::referenceDisplayModeFromName(m_handDisplayMode);
     auto drawNotes = [&](bool preparatoryPass) {
         for (auto it = first; it != notes.end(); ++it) {
             const NoteEvent &note = *it;
@@ -235,14 +236,14 @@ void PianoRollItem::paint(QPainter *p)
                                          whiteKeyWidth, fallTop, strikeY, pixelsPerBeat);
             if (rect.bottom() < topPad || rect.top() > strikeY + 36) continue;
 
-            const bool reference = m_controller->rollNoteReference(note);
-            const bool active = m_controller->rollNoteActive(note);
-            const bool expected = m_controller->rollNoteExpected(note);
-            const bool completed = m_controller->rollNoteCompleted(note);
-            const bool preparatory = !expected && !active && !completed && note.startTick > currentTick;
+            const HandPractice::NoteDisplayState state = m_controller->rollNoteDisplayState(note);
+            const bool active = state.active;
+            const bool expected = state.expected;
+            const bool completed = state.completed;
+            const bool preparatory = state.preparatory;
             if (preparatory != preparatoryPass) continue;
 
-            if (reference && m_handDisplayMode == QStringLiteral("target")) {
+            if (!HandPractice::displayStateVisible(state, referenceMode)) {
                 continue;
             }
 
@@ -277,7 +278,7 @@ void PianoRollItem::paint(QPainter *p)
                 fillAlpha = 0.16;
                 edgeAlpha = 0.42;
             }
-            if (reference && m_handDisplayMode == QStringLiteral("dim")) {
+            if (HandPractice::displayStateDimmed(state, referenceMode)) {
                 fillAlpha *= 0.34;
                 edgeAlpha *= 0.42;
             }

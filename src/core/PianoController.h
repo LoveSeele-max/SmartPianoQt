@@ -106,6 +106,7 @@ public:
     qint64 expectedTickValue() const;
     int ppq() const { return m_playbackEngine.ppq(); }
     bool noteBelongsToLeftHand(const NoteEvent &note) const;
+    HandPractice::NoteDisplayState rollNoteDisplayState(const NoteEvent &note) const;
     bool rollNoteMatchesTarget(const NoteEvent &note) const;
     bool rollNoteExpected(const NoteEvent &note) const;
     bool rollNoteActive(const NoteEvent &note) const;
