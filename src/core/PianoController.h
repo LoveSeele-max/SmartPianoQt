@@ -38,6 +38,11 @@ class PianoController : public QObject {
     Q_PROPERTY(int missedCount READ missedCount NOTIFY statsChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(QString audioStatus READ audioStatus NOTIFY audioStatusChanged)
+    Q_PROPERTY(QString soundFontName READ soundFontName NOTIFY audioSettingsChanged)
+    Q_PROPERTY(QString soundFontPath READ soundFontPath NOTIFY audioSettingsChanged)
+    Q_PROPERTY(QVariantList soundFontFiles READ soundFontFiles NOTIFY audioSettingsChanged)
+    Q_PROPERTY(QString velocityCurve READ velocityCurve WRITE setVelocityCurve NOTIFY audioSettingsChanged)
+    Q_PROPERTY(QString latencyMode READ latencyMode WRITE setLatencyMode NOTIFY audioSettingsChanged)
     Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(bool silentPracticeEnabled READ silentPracticeEnabled WRITE setSilentPracticeEnabled NOTIFY silentPracticeChanged)
     Q_PROPERTY(bool handPracticeEnabled READ handPracticeEnabled WRITE setHandPracticeEnabled NOTIFY handPracticeChanged)
@@ -80,6 +85,11 @@ public:
     int missedCount() const { return m_practice.missedCount(); }
     QString statusMessage() const { return m_statusMessage; }
     QString audioStatus() const { return m_synth.statusText(); }
+    QString soundFontName() const { return m_synth.soundFontName(); }
+    QString soundFontPath() const { return m_synth.soundFontPath(); }
+    QVariantList soundFontFiles() const;
+    QString velocityCurve() const { return m_synth.velocityCurve(); }
+    QString latencyMode() const { return m_synth.latencyMode(); }
     int volume() const { return m_synth.volume(); }
     bool silentPracticeEnabled() const { return m_silentPracticeEnabled; }
     bool handPracticeEnabled() const { return m_handPracticeEnabled; }
@@ -117,6 +127,8 @@ public slots:
     void setPlaybackSpeed(int speed);
     void setMode(const QString &mode);
     void setVolume(int volume);
+    void setVelocityCurve(const QString &curve);
+    void setLatencyMode(const QString &mode);
     void setSilentPracticeEnabled(bool enabled);
     void setHandPracticeEnabled(bool enabled);
     void setHandPracticeSide(const QString &side);
@@ -130,6 +142,10 @@ public slots:
     Q_INVOKABLE void seekPreviousMeasure();
     Q_INVOKABLE void noteOn(int midi, int velocity = 112);
     Q_INVOKABLE void noteOff(int midi);
+    Q_INVOKABLE void loadSoundFont(const QUrl &url);
+    Q_INVOKABLE void loadSoundFontPath(const QString &path);
+    Q_INVOKABLE void rescanSoundFonts();
+    Q_INVOKABLE void previewCurrentSound();
     Q_INVOKABLE void loadDemoSong();
     Q_INVOKABLE void loadSheet(const QUrl &url);
     Q_INVOKABLE void refreshLocalMidiLibrary();
@@ -157,6 +173,7 @@ signals:
     void statsChanged();
     void statusMessageChanged();
     void audioStatusChanged();
+    void audioSettingsChanged();
     void volumeChanged();
     void silentPracticeChanged();
     void handPracticeChanged();

@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QMediaDevices>
 #include <QStringList>
+#include <QVector>
 #include <QtEndian>
 #include <QtMath>
 
@@ -36,6 +37,89 @@ double midiToFrequency(int midi)
 double softClip(double value)
 {
     return std::tanh(value * 1.35);
+}
+
+bool isSoundFontFile(const QFileInfo &info)
+{
+    if (!info.exists() || !info.isFile() || !info.isReadable()) return false;
+    const QString suffix = info.suffix().toLower();
+    return suffix == QStringLiteral("sf2") || suffix == QStringLiteral("sf3");
+}
+
+int soundFontPriority(const QFileInfo &info)
+{
+    const QString lower = info.fileName().toLower();
+    if (lower.contains(QStringLiteral("piano")) ||
+        lower.contains(QStringLiteral("grand")) ||
+        lower.contains(QStringLiteral("keys"))) {
+        return 0;
+    }
+    return 1;
+}
+
+void appendSoundFontCandidate(QStringList &candidates, const QFileInfo &info)
+{
+    if (!isSoundFontFile(info)) return;
+
+    const QString path = info.absoluteFilePath();
+    if (!candidates.contains(path)) {
+        candidates.push_back(path);
+    }
+}
+
+QStringList soundFontsFromDir(const QString &dirPath)
+{
+    QDir dir(dirPath);
+    const QFileInfoList files = dir.entryInfoList(
+        { QStringLiteral("*.sf3"), QStringLiteral("*.sf2") },
+        QDir::Files | QDir::Readable,
+        QDir::Name | QDir::IgnoreCase);
+
+    QVector<QFileInfo> sorted;
+    sorted.reserve(files.size());
+    for (const QFileInfo &file : files) {
+        sorted.push_back(file);
+    }
+    std::sort(sorted.begin(), sorted.end(), [](const QFileInfo &a, const QFileInfo &b) {
+        const int pa = soundFontPriority(a);
+        const int pb = soundFontPriority(b);
+        if (pa != pb) return pa < pb;
+        return QString::compare(a.fileName(), b.fileName(), Qt::CaseInsensitive) < 0;
+    });
+
+    QStringList candidates;
+    for (const QFileInfo &file : sorted) {
+        appendSoundFontCandidate(candidates, file);
+    }
+    return candidates;
+}
+
+void appendSoundFontsFromPath(QStringList &candidates, const QString &path)
+{
+    if (path.trimmed().isEmpty()) return;
+
+    const QFileInfo info(path);
+    if (!info.exists()) return;
+
+    if (info.isDir()) {
+        const QStringList files = soundFontsFromDir(info.absoluteFilePath());
+        for (const QString &file : files) {
+            if (!candidates.contains(file)) candidates.push_back(file);
+        }
+        return;
+    }
+
+    appendSoundFontCandidate(candidates, info);
+}
+
+QString findSoundFontsDir(QDir dir)
+{
+    for (int i = 0; i < 6; ++i) {
+        const QString candidate = dir.absoluteFilePath(QStringLiteral("soundfonts"));
+        if (QDir(candidate).exists()) return QDir(candidate).absolutePath();
+        if (!dir.cdUp()) break;
+    }
+    return {};
 }
 
 struct fluid_settings_t;
@@ -343,13 +427,45 @@ MidiSynth::~MidiSynth()
     close();
 }
 
+QString MidiSynth::soundFontName() const
+{
+    return m_soundFontPath.isEmpty() ? QString() : QFileInfo(m_soundFontPath).fileName();
+}
+
+QStringList MidiSynth::soundFontCandidates() const
+{
+    QStringList candidates;
+
+    appendSoundFontsFromPath(candidates, qEnvironmentVariable("SMARTPIANO_SOUNDFONT"));
+    appendSoundFontsFromPath(candidates, qEnvironmentVariable("SOUNDFONT_PATH"));
+
+    const QString currentDir = findSoundFontsDir(QDir::current());
+    if (!currentDir.isEmpty()) {
+        const QStringList files = soundFontsFromDir(currentDir);
+        for (const QString &file : files) {
+            if (!candidates.contains(file)) candidates.push_back(file);
+        }
+    }
+
+    const QString appDir = findSoundFontsDir(QDir(QCoreApplication::applicationDirPath()));
+    if (!appDir.isEmpty() && appDir != currentDir) {
+        const QStringList files = soundFontsFromDir(appDir);
+        for (const QString &file : files) {
+            if (!candidates.contains(file)) candidates.push_back(file);
+        }
+    }
+
+    return candidates;
+}
+
 void MidiSynth::noteOn(int midi, int velocity)
 {
     if (!m_available) return;
+    const int mappedVelocity = AudioSettings::mapVelocity(velocity, m_velocityCurve);
     if (m_backend == Backend::FluidSynth && m_fluidDevice) {
-        m_fluidDevice->noteOn(midi, qBound(1, velocity, 127), m_volume);
+        m_fluidDevice->noteOn(midi, mappedVelocity, m_volume);
     } else if (m_backend == Backend::InternalPiano && m_internalDevice) {
-        m_internalDevice->noteOn(midi, qBound(1, velocity, 127), m_volume);
+        m_internalDevice->noteOn(midi, mappedVelocity, m_volume);
     }
 }
 
@@ -384,8 +500,44 @@ void MidiSynth::setVolume(int volume)
     }
 }
 
+bool MidiSynth::loadSoundFont(const QString &path)
+{
+    const QString resolved = resolveSoundFontPathFrom(path);
+    if (resolved.isEmpty()) {
+        m_lastOpenError = QStringLiteral("找不到或无法读取 SoundFont：%1").arg(path);
+        m_statusText = QStringLiteral("SoundFont 加载失败：%1；当前音色未切换").arg(m_lastOpenError);
+        return false;
+    }
+
+    m_soundFontOverridePath = resolved;
+    reopen();
+    return m_backend == Backend::FluidSynth && QFileInfo(m_soundFontPath).absoluteFilePath() == resolved;
+}
+
+void MidiSynth::rescanSoundFonts()
+{
+    m_soundFontOverridePath.clear();
+    reopen();
+}
+
+void MidiSynth::setVelocityCurve(const QString &curve)
+{
+    m_velocityCurve = AudioSettings::velocityCurveFromName(curve);
+}
+
+bool MidiSynth::setLatencyMode(const QString &mode)
+{
+    const QString normalized = AudioSettings::normalizeLatencyMode(mode);
+    if (m_latencyMode == normalized) return false;
+
+    m_latencyMode = normalized;
+    reopen();
+    return true;
+}
+
 void MidiSynth::open()
 {
+    m_lastOpenError.clear();
     if (openFluidSynth()) {
         return;
     }
@@ -408,15 +560,26 @@ void MidiSynth::close()
     m_available = false;
 }
 
+bool MidiSynth::reopen()
+{
+    close();
+    open();
+    return m_available;
+}
+
 bool MidiSynth::openFluidSynth()
 {
     const QString soundFontPath = resolveSoundFontPath();
     if (soundFontPath.isEmpty()) {
+        m_lastOpenError = m_soundFontOverridePath.isEmpty()
+            ? QStringLiteral("未找到 .sf2 / .sf3 文件")
+            : QStringLiteral("找不到或无法读取 SoundFont：%1").arg(m_soundFontOverridePath);
         return false;
     }
 
     const QString libraryPath = resolveFluidSynthLibraryPath();
     if (libraryPath.isEmpty()) {
+        m_lastOpenError = QStringLiteral("未找到 FluidSynth 动态库");
         return false;
     }
 
@@ -428,6 +591,7 @@ bool MidiSynth::openFluidSynth()
 
     m_fluidLibrary.setFileName(libraryPath);
     if (!m_fluidLibrary.load()) {
+        m_lastOpenError = QStringLiteral("FluidSynth 动态库加载失败：%1").arg(m_fluidLibrary.errorString());
         return false;
     }
 
@@ -455,12 +619,14 @@ bool MidiSynth::openFluidSynth()
     if (!api.newSettings || !api.deleteSettings || !api.setNum || !api.setInt ||
         !api.newSynth || !api.deleteSynth || !api.sfLoad || !api.programSelect ||
         !api.noteOn || !api.noteOff || !api.writeS16) {
+        m_lastOpenError = QStringLiteral("FluidSynth 动态库接口不完整");
         m_fluidLibrary.unload();
         return false;
     }
 
     const QAudioDevice device = QMediaDevices::defaultAudioOutput();
     if (device.isNull()) {
+        m_lastOpenError = QStringLiteral("没有可用音频输出设备");
         m_fluidLibrary.unload();
         return false;
     }
@@ -470,12 +636,14 @@ bool MidiSynth::openFluidSynth()
     m_format.setSampleFormat(QAudioFormat::Int16);
 
     if (!device.isFormatSupported(m_format)) {
+        m_lastOpenError = QStringLiteral("音频设备不支持 44.1kHz / 16-bit / stereo 输出");
         m_fluidLibrary.unload();
         return false;
     }
 
     fluid_settings_t *settings = api.newSettings();
     if (!settings) {
+        m_lastOpenError = QStringLiteral("FluidSynth 设置创建失败");
         m_fluidLibrary.unload();
         return false;
     }
@@ -489,6 +657,7 @@ bool MidiSynth::openFluidSynth()
 
     fluid_synth_t *synth = api.newSynth(settings);
     if (!synth) {
+        m_lastOpenError = QStringLiteral("FluidSynth 合成器创建失败");
         api.deleteSettings(settings);
         m_fluidLibrary.unload();
         return false;
@@ -496,6 +665,7 @@ bool MidiSynth::openFluidSynth()
 
     const int sfid = api.sfLoad(synth, soundFontPath.toUtf8().constData(), 0);
     if (sfid < 0) {
+        m_lastOpenError = QStringLiteral("SoundFont 文件加载失败：%1").arg(soundFontPath);
         api.deleteSynth(synth);
         api.deleteSettings(settings);
         m_fluidLibrary.unload();
@@ -509,7 +679,7 @@ bool MidiSynth::openFluidSynth()
 
     m_fluidDevice = std::make_unique<FluidSynthAudioDevice>(api, settings, synth);
     m_audioSink = std::make_unique<QAudioSink>(device, m_format);
-    m_audioSink->setBufferSize(8192);
+    m_audioSink->setBufferSize(outputBufferSize());
     m_audioSink->start(m_fluidDevice.get());
 
     m_available = true;
@@ -543,73 +713,31 @@ bool MidiSynth::openInternalPiano()
     m_internalDevice = std::make_unique<PianoAudioDevice>();
     m_internalDevice->setVolume(m_volume);
     m_audioSink = std::make_unique<QAudioSink>(device, m_format);
-    m_audioSink->setBufferSize(4096);
+    m_audioSink->setBufferSize(outputBufferSize());
     m_audioSink->start(m_internalDevice.get());
 
     m_available = true;
     m_backend = Backend::InternalPiano;
-    m_statusText = QStringLiteral("钢琴音色：内置柔和钢琴（未加载 SoundFont）");
+    m_statusText = m_lastOpenError.isEmpty()
+        ? QStringLiteral("钢琴音色：内置柔和钢琴（未加载 SoundFont）")
+        : QStringLiteral("SoundFont 加载失败：%1；已使用内置柔和钢琴").arg(m_lastOpenError);
     return true;
 }
 
 QString MidiSynth::resolveSoundFontPath() const
 {
-    auto pickFromDir = [](const QString &dirPath) -> QString {
-        QDir dir(dirPath);
-        const QFileInfoList files = dir.entryInfoList(
-            { QStringLiteral("*.sf3"), QStringLiteral("*.sf2") },
-            QDir::Files | QDir::Readable,
-            QDir::Name | QDir::IgnoreCase);
-        if (files.isEmpty()) return {};
-
-        for (const QFileInfo &file : files) {
-            const QString lower = file.fileName().toLower();
-            if (lower.contains(QStringLiteral("piano")) ||
-                lower.contains(QStringLiteral("grand")) ||
-                lower.contains(QStringLiteral("keys"))) {
-                return file.absoluteFilePath();
-            }
-        }
-        return files.first().absoluteFilePath();
-    };
-
-    auto pickFromPath = [&pickFromDir](const QString &path) -> QString {
-        if (path.trimmed().isEmpty()) return {};
-        const QFileInfo info(path);
-        if (!info.exists()) return {};
-
-        if (info.isDir()) {
-            return pickFromDir(info.absoluteFilePath());
-        }
-
-        const QString suffix = info.suffix().toLower();
-        if ((suffix == QStringLiteral("sf2") || suffix == QStringLiteral("sf3")) && info.isReadable()) {
-            return info.absoluteFilePath();
-        }
-        return {};
-    };
-
-    const QStringList environmentPaths = {
-        qEnvironmentVariable("SMARTPIANO_SOUNDFONT"),
-        qEnvironmentVariable("SOUNDFONT_PATH")
-    };
-    for (const QString &path : environmentPaths) {
-        const QString resolved = pickFromPath(path);
-        if (!resolved.isEmpty()) return resolved;
+    if (!m_soundFontOverridePath.isEmpty()) {
+        return resolveSoundFontPathFrom(m_soundFontOverridePath);
     }
 
-    auto findDir = [](QDir dir) -> QString {
-        for (int i = 0; i < 6; ++i) {
-            const QString candidate = dir.absoluteFilePath(QStringLiteral("soundfonts"));
-            if (QDir(candidate).exists()) return QDir(candidate).absolutePath();
-            if (!dir.cdUp()) break;
-        }
-        return {};
-    };
+    const QStringList candidates = soundFontCandidates();
+    if (!candidates.isEmpty()) {
+        return candidates.first();
+    }
 
-    QString dirPath = findDir(QDir::current());
+    QString dirPath = findSoundFontsDir(QDir::current());
     if (dirPath.isEmpty()) {
-        dirPath = findDir(QDir(QCoreApplication::applicationDirPath()));
+        dirPath = findSoundFontsDir(QDir(QCoreApplication::applicationDirPath()));
     }
     if (dirPath.isEmpty()) {
         QDir dir(QDir::current());
@@ -617,7 +745,20 @@ QString MidiSynth::resolveSoundFontPath() const
         dirPath = dir.absoluteFilePath(QStringLiteral("soundfonts"));
     }
 
-    return pickFromDir(dirPath);
+    Q_UNUSED(dirPath)
+    return {};
+}
+
+QString MidiSynth::resolveSoundFontPathFrom(const QString &path) const
+{
+    QStringList candidates;
+    appendSoundFontsFromPath(candidates, path);
+    return candidates.isEmpty() ? QString() : candidates.first();
+}
+
+int MidiSynth::outputBufferSize() const
+{
+    return AudioSettings::bufferSizeForLatencyMode(m_latencyMode);
 }
 
 QString MidiSynth::resolveFluidSynthLibraryPath() const

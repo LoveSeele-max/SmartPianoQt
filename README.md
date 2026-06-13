@@ -138,13 +138,21 @@ $env:QT_PREFIX = "C:\Qt\6.11.1\mingw_64"
 
 ## 钢琴音色
 
-最接近传统钢琴的方式是使用真实采样 SoundFont：
+最接近传统钢琴的方式是使用真实采样 SoundFont。内置柔和钢琴只作为无外部依赖的保底音色：
 
 1. 安装 FluidSynth，或把 `libfluidsynth-3.dll` 放到 `SmartPianoQt.exe` 旁边。
 2. 把钢琴 `.sf2` 或 `.sf3` 文件放到 [soundfonts](soundfonts) 文件夹。
-3. 重新启动应用，顶部状态会显示 `钢琴音色：SoundFont 采样 - 文件名`。
+3. 在应用的“设备”页查看当前音色，也可以手动选择 SoundFont、重新扫描 `soundfonts/`，并立即试听当前音色。
 
-如果没有检测到 FluidSynth 或 SoundFont，应用会自动退回内置柔和钢琴合成器。
+如果没有检测到 FluidSynth 或 SoundFont，应用会自动退回内置柔和钢琴合成器，并在音源状态中显示失败原因或当前后端。
+
+设备页还提供力度曲线和音频延迟模式：
+
+- `线性`：保持 MIDI velocity 原始力度。
+- `柔和`：压低中高力度，适合长时间练习。
+- `明亮`：抬高中等力度，触键反馈更清楚。
+- `压缩`：收敛最轻和最重力度，适合输出力度不稳定的键盘。
+- `低延迟 / 稳定 / 兼容`：调整音频 buffer，实时弹奏优先低延迟，自动播放或低配置机器可选稳定/兼容。
 
 `run.ps1` 会在启动时自动连接 SoundFont：如果 [soundfonts](soundfonts) 里还没有 `.sf2/.sf3`，会优先从 `SMARTPIANO_SOUNDFONT`、`SOUNDFONT_PATH`、`Documents\SoundFonts` 和 `Downloads` 寻找音色文件，并把它链接到项目的 `soundfonts/` 目录。
 

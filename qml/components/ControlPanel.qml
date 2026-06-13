@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 MaterialCard {
@@ -9,6 +10,15 @@ MaterialCard {
     property int currentTab: 0
     signal focusRequested()
 
+    function currentSoundFontIndex() {
+        const files = piano.soundFontFiles
+        for (let i = 0; i < files.length; ++i) {
+            if (files[i].current)
+                return i
+        }
+        return -1
+    }
+
     Layout.preferredWidth: collapsed ? 68 : 300
     Layout.minimumWidth: collapsed ? 68 : 280
     Layout.maximumWidth: collapsed ? 68 : 320
@@ -17,6 +27,13 @@ MaterialCard {
     cardColor: Theme.surface
     strokeColor: Theme.darkMode ? "#26344A" : "#EEF1F5"
     clip: true
+
+    FileDialog {
+        id: soundFontDialog
+        title: "选择 SoundFont"
+        nameFilters: [ "SoundFont (*.sf2 *.sf3)", "All files (*)" ]
+        onAccepted: piano.loadSoundFont(selectedFile)
+    }
 
     function tabTitle(index) {
         if (index === 1)
@@ -200,7 +217,7 @@ MaterialCard {
 
             MaterialCard {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 216
+                Layout.preferredHeight: 476
                 padding: Theme.gapSm
                 cardColor: Theme.surfaceContainer
                 strokeColor: "transparent"
@@ -222,6 +239,57 @@ MaterialCard {
                         color: Theme.textSecondary
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.WordWrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: piano.soundFontName.length > 0
+                              ? "当前：" + piano.soundFontName
+                              : "当前：内置柔和钢琴"
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
+                        font.bold: true
+                        elide: Text.ElideMiddle
+                    }
+
+                    ComboBox {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 36
+                        model: piano.soundFontFiles.length > 0
+                               ? piano.soundFontFiles
+                               : [ { name: "未扫描到 SoundFont", path: "" } ]
+                        textRole: "name"
+                        currentIndex: Math.max(0, root.currentSoundFontIndex())
+                        enabled: piano.soundFontFiles.length > 0
+                        font.pixelSize: Theme.fontCaption
+                        onActivated: {
+                            const item = piano.soundFontFiles[index]
+                            if (item && item.path)
+                                piano.loadSoundFontPath(item.path)
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gapSm
+
+                        TonalButton {
+                            text: "选择"
+                            Layout.fillWidth: true
+                            onClicked: soundFontDialog.open()
+                        }
+
+                        TonalButton {
+                            text: "重扫"
+                            Layout.fillWidth: true
+                            onClicked: piano.rescanSoundFonts()
+                        }
+
+                        TonalButton {
+                            text: "试听"
+                            Layout.fillWidth: true
+                            onClicked: piano.previewCurrentSound()
+                        }
                     }
 
                     Label {
@@ -260,10 +328,41 @@ MaterialCard {
 
                     Label {
                         Layout.fillWidth: true
-                        text: "SoundFont / FluidSynth 状态在这里查看"
-                        color: Theme.textMuted
+                        text: "力度曲线"
+                        color: Theme.textSecondary
                         font.pixelSize: Theme.fontCaption
+                        font.bold: true
                     }
+
+                    SegmentedPill {
+                        options: [
+                            { label: "线性", value: "linear" },
+                            { label: "柔和", value: "soft" },
+                            { label: "明亮", value: "bright" },
+                            { label: "压缩", value: "compressed" }
+                        ]
+                        currentValue: piano.velocityCurve
+                        onSelected: value => piano.velocityCurve = value
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: "延迟模式"
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
+                        font.bold: true
+                    }
+
+                    SegmentedPill {
+                        options: [
+                            { label: "低延迟", value: "low" },
+                            { label: "稳定", value: "stable" },
+                            { label: "兼容", value: "compatible" }
+                        ]
+                        currentValue: piano.latencyMode
+                        onSelected: value => piano.latencyMode = value
+                    }
+
                 }
             }
 

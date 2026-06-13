@@ -148,6 +148,24 @@ QVariantList PianoController::expectedRightNotes() const
     return expectedNotesForHand(false);
 }
 
+QVariantList PianoController::soundFontFiles() const
+{
+    const QString currentPath = QFileInfo(m_synth.soundFontPath()).absoluteFilePath();
+    const QStringList candidates = m_synth.soundFontCandidates();
+
+    QVariantList list;
+    list.reserve(candidates.size());
+    for (const QString &path : candidates) {
+        const QFileInfo info(path);
+        QVariantMap item;
+        item.insert(QStringLiteral("name"), info.fileName());
+        item.insert(QStringLiteral("path"), info.absoluteFilePath());
+        item.insert(QStringLiteral("current"), info.absoluteFilePath() == currentPath);
+        list.push_back(item);
+    }
+    return list;
+}
+
 qint64 PianoController::expectedTickValue() const
 {
     return isPracticeMode() ? m_practice.expectedTick() : -1;
@@ -247,6 +265,77 @@ void PianoController::setVolume(int volume)
     if (m_synth.volume() == clamped) return;
     m_synth.setVolume(clamped);
     emit volumeChanged();
+}
+
+void PianoController::setVelocityCurve(const QString &curve)
+{
+    const QString before = m_synth.velocityCurve();
+    m_synth.setVelocityCurve(curve);
+    if (m_synth.velocityCurve() == before) return;
+
+    emit audioSettingsChanged();
+    setStatusMessage(QStringLiteral("力度曲线：%1").arg(m_synth.velocityCurve()));
+}
+
+void PianoController::setLatencyMode(const QString &mode)
+{
+    const QString before = m_synth.latencyMode();
+    if (!m_synth.setLatencyMode(mode) || m_synth.latencyMode() == before) return;
+
+    emit audioStatusChanged();
+    emit audioSettingsChanged();
+    setStatusMessage(QStringLiteral("音频延迟模式：%1").arg(m_synth.latencyMode()));
+}
+
+void PianoController::loadSoundFont(const QUrl &url)
+{
+    const QString path = url.toLocalFile();
+    loadSoundFontPath(path);
+}
+
+void PianoController::loadSoundFontPath(const QString &path)
+{
+    if (path.isEmpty()) {
+        setStatusMessage(QStringLiteral("SoundFont 路径无效"));
+        return;
+    }
+
+    const bool loaded = m_synth.loadSoundFont(path);
+    emit audioStatusChanged();
+    emit audioSettingsChanged();
+    setStatusMessage(loaded
+                         ? QStringLiteral("已切换 SoundFont：%1").arg(m_synth.soundFontName())
+                         : m_synth.statusText());
+}
+
+void PianoController::rescanSoundFonts()
+{
+    m_synth.rescanSoundFonts();
+    emit audioStatusChanged();
+    emit audioSettingsChanged();
+    setStatusMessage(m_synth.soundFontName().isEmpty()
+                         ? QStringLiteral("已重扫 soundfonts，当前使用内置音色")
+                         : QStringLiteral("已重扫 soundfonts：%1").arg(m_synth.soundFontName()));
+}
+
+void PianoController::previewCurrentSound()
+{
+    if (!m_synth.isAvailable()) {
+        setStatusMessage(QStringLiteral("当前没有可用音频输出"));
+        return;
+    }
+
+    const QVector<int> chord = { 60, 64, 67 };
+    for (int i = 0; i < chord.size(); ++i) {
+        const int midi = chord.at(i);
+        QTimer::singleShot(i * 85, this, [this, midi]() {
+            m_synth.noteOn(midi, 106);
+        });
+        QTimer::singleShot(i * 85 + 520, this, [this, midi]() {
+            m_synth.noteOff(midi);
+        });
+    }
+    setStatusMessage(QStringLiteral("试听当前音色"));
 }
 
 void PianoController::setSilentPracticeEnabled(bool enabled)

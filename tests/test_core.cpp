@@ -9,6 +9,7 @@ int main(int argc, char *argv[])
 
     using namespace SmartPianoTest;
 
+    testAudioSettingsVelocityAndLatency();
     testNoteUtils();
     testJsonParser();
     testJsonParserSkipsOutOfRangeMidi();

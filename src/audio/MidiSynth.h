@@ -1,5 +1,7 @@
 #pragma once
 
+#include "audio/AudioSettings.h"
+
 #include <QAudioFormat>
 #include <QAudioSink>
 #include <QIODevice>
@@ -7,6 +9,7 @@
 #include <QMutex>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 #include <memory>
 #include <vector>
@@ -60,12 +63,21 @@ public:
 
     bool isAvailable() const { return m_available; }
     QString statusText() const { return m_statusText; }
+    QString soundFontPath() const { return m_soundFontPath; }
+    QString soundFontName() const;
+    QStringList soundFontCandidates() const;
+    QString velocityCurve() const { return AudioSettings::velocityCurveName(m_velocityCurve); }
+    QString latencyMode() const { return m_latencyMode; }
     int volume() const { return m_volume; }
 
     void noteOn(int midi, int velocity = 92);
     void noteOff(int midi);
     void stopAll();
     void setVolume(int volume);
+    bool loadSoundFont(const QString &path);
+    void rescanSoundFonts();
+    void setVelocityCurve(const QString &curve);
+    bool setLatencyMode(const QString &mode);
 
 private:
     enum class Backend {
@@ -78,13 +90,20 @@ private:
     void close();
     bool openFluidSynth();
     bool openInternalPiano();
+    bool reopen();
     QString resolveSoundFontPath() const;
+    QString resolveSoundFontPathFrom(const QString &path) const;
     QString resolveFluidSynthLibraryPath() const;
+    int outputBufferSize() const;
 
     bool m_available = false;
     int m_volume = 118;
     QString m_statusText;
     QString m_soundFontPath;
+    QString m_soundFontOverridePath;
+    QString m_lastOpenError;
+    AudioSettings::VelocityCurve m_velocityCurve = AudioSettings::VelocityCurve::Linear;
+    QString m_latencyMode = QStringLiteral("stable");
     Backend m_backend = Backend::None;
     QAudioFormat m_format;
     std::unique_ptr<QAudioSink> m_audioSink;

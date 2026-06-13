@@ -26,6 +26,7 @@ QByteArray midiFile(const QByteArray &track, int ppq = 480);
 NoteEvent makeNote(int midi, qint64 startTick);
 Song makePlaybackSong();
 
+void testAudioSettingsVelocityAndLatency();
 void testNoteUtils();
 void testJsonParser();
 void testJsonParserSkipsOutOfRangeMidi();

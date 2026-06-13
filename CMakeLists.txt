@@ -19,6 +19,8 @@ set_source_files_properties(qml/components/Theme.qml qml/components/PianoRollSet
 
 qt_add_executable(SmartPianoQt
     src/main.cpp
+    src/audio/AudioSettings.cpp
+    src/audio/AudioSettings.h
     src/audio/MidiSynth.cpp
     src/audio/MidiSynth.h
     src/core/HandPractice.cpp
@@ -96,6 +98,7 @@ include(CTest)
 
 if(BUILD_TESTING)
     add_executable(SmartPianoQtTests
+        tests/test_audio_settings.cpp
         tests/test_core.cpp
         tests/test_hand_practice.cpp
         tests/test_midi_input.cpp
@@ -106,6 +109,8 @@ if(BUILD_TESTING)
         tests/test_practice_record_store.cpp
         tests/test_support.cpp
         tests/test_support.h
+        src/audio/AudioSettings.cpp
+        src/audio/AudioSettings.h
         src/core/HandPractice.cpp
         src/core/HandPractice.h
         src/core/NoteUtils.cpp
