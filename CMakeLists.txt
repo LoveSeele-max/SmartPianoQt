@@ -21,6 +21,8 @@ qt_add_executable(SmartPianoQt
     src/main.cpp
     src/audio/MidiSynth.cpp
     src/audio/MidiSynth.h
+    src/core/HandPractice.cpp
+    src/core/HandPractice.h
     src/core/NoteUtils.cpp
     src/core/NoteUtils.h
     src/core/PianoController.cpp
@@ -95,6 +97,7 @@ include(CTest)
 if(BUILD_TESTING)
     add_executable(SmartPianoQtTests
         tests/test_core.cpp
+        tests/test_hand_practice.cpp
         tests/test_midi_input.cpp
         tests/test_midi_parser.cpp
         tests/test_note_json.cpp
@@ -103,6 +106,8 @@ if(BUILD_TESTING)
         tests/test_practice_record_store.cpp
         tests/test_support.cpp
         tests/test_support.h
+        src/core/HandPractice.cpp
+        src/core/HandPractice.h
         src/core/NoteUtils.cpp
         src/core/NoteUtils.h
         src/core/Song.h

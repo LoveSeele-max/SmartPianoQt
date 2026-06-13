@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/MidiSynth.h"
+#include "core/HandPractice.h"
 #include "core/Song.h"
 #include "library/LocalSheetModel.h"
 #include "playback/PlaybackEngine.h"
@@ -104,6 +105,12 @@ public:
     qint64 totalTickValue() const { return m_playbackEngine.totalTicks(); }
     qint64 expectedTickValue() const;
     int ppq() const { return m_playbackEngine.ppq(); }
+    bool noteBelongsToLeftHand(const NoteEvent &note) const;
+    bool rollNoteMatchesTarget(const NoteEvent &note) const;
+    bool rollNoteExpected(const NoteEvent &note) const;
+    bool rollNoteActive(const NoteEvent &note) const;
+    bool rollNoteCompleted(const NoteEvent &note) const;
+    bool rollNoteReference(const NoteEvent &note) const;
 
 public slots:
     void setPlaybackSpeed(int speed);
@@ -175,7 +182,10 @@ private:
     void resetPracticeState(bool resetStats, bool resetPlayed);
     void rebuildPracticeSongForHand();
     QVector<NoteEvent> practiceNotesForCurrentHand() const;
-    bool noteMatchesSelectedHand(const NoteEvent &note) const;
+    HandPractice::Filter currentHandFilter() const;
+    bool midiMatchesCurrentHand(int midi) const;
+    void markNotesPlayedAtCompletedTick(qint64 completedTick);
+    void markNotesPlayedBeforeTick(qint64 tick);
     QString handPracticeLabel() const;
     void refreshActiveNotes();
     void setPlaying(bool playing);

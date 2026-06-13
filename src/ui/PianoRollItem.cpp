@@ -89,15 +89,6 @@ void PianoRollItem::setShowBeatRuler(bool visible)
     update();
 }
 
-void PianoRollItem::setSplitMidi(int midi)
-{
-    const int normalized = qBound(MinMidi, midi, MaxMidi);
-    if (m_splitMidi == normalized) return;
-    m_splitMidi = normalized;
-    emit rollSettingsChanged();
-    update();
-}
-
 void PianoRollItem::setHandDisplayMode(const QString &mode)
 {
     const QString normalized = mode == QStringLiteral("dim") ? QStringLiteral("dim")
@@ -143,11 +134,6 @@ void PianoRollItem::paint(QPainter *p)
     const double currentBeat = tickToBeat(m_controller->currentTickValue());
     const qint64 visibleStartTick = qMax<qint64>(0, qRound64((currentBeat - 1.2) * m_controller->ppq()));
     const qint64 visibleEndTick = qRound64((currentBeat + m_lookAheadBeats + 1.0) * m_controller->ppq());
-    const qint64 expectedTick = m_controller->expectedTickValue();
-    const bool practiceMode = m_controller->mode() != QStringLiteral("auto");
-    const bool handFilterActive = m_controller->handPracticeEnabled();
-    const bool targetIsLeft = m_controller->handPracticeSide() == QStringLiteral("left");
-
     p->fillRect(QRectF(0, 0, w, topPad), QColor(5, 7, 13, 198));
     p->fillRect(QRectF(0, strikeY - 2, w, h - strikeY + 2), QColor(5, 7, 13, 218));
 
@@ -249,23 +235,22 @@ void PianoRollItem::paint(QPainter *p)
                                          whiteKeyWidth, fallTop, strikeY, pixelsPerBeat);
             if (rect.bottom() < topPad || rect.top() > strikeY + 36) continue;
 
-            const bool noteIsLeft = note.midi < m_splitMidi;
-            const bool targetHand = !handFilterActive || (targetIsLeft ? noteIsLeft : !noteIsLeft);
-            const bool active = currentTick >= note.startTick &&
-                                currentTick <= note.startTick + note.durationTick;
-            const bool expected = practiceMode && expectedTick == note.startTick && targetHand;
-            const bool preparatory = !expected && !active && !note.played && note.startTick > currentTick;
+            const bool reference = m_controller->rollNoteReference(note);
+            const bool active = m_controller->rollNoteActive(note);
+            const bool expected = m_controller->rollNoteExpected(note);
+            const bool completed = m_controller->rollNoteCompleted(note);
+            const bool preparatory = !expected && !active && !completed && note.startTick > currentTick;
             if (preparatory != preparatoryPass) continue;
 
-            if (handFilterActive && m_handDisplayMode == QStringLiteral("target") && !targetHand) {
+            if (reference && m_handDisplayMode == QStringLiteral("target")) {
                 continue;
             }
 
-            QColor fill = handColor(note.midi);
-            QColor edge = handEdgeColor(note.midi);
+            QColor fill = handColor(note);
+            QColor edge = handEdgeColor(note);
             qreal fillAlpha = 0.86;
             qreal edgeAlpha = 0.86;
-            if (note.played) {
+            if (completed) {
                 fill = QColor("#64748B");
                 edge = QColor("#94A3B8");
                 fillAlpha = 0.56;
@@ -292,7 +277,7 @@ void PianoRollItem::paint(QPainter *p)
                 fillAlpha = 0.16;
                 edgeAlpha = 0.42;
             }
-            if (handFilterActive && m_handDisplayMode == QStringLiteral("dim") && !targetHand) {
+            if (reference && m_handDisplayMode == QStringLiteral("dim")) {
                 fillAlpha *= 0.34;
                 edgeAlpha *= 0.42;
             }
@@ -356,14 +341,14 @@ QRectF PianoRollItem::noteRect(int midi, double startBeat, double durationBeat, 
     return QRectF(x, top, width, height);
 }
 
-QColor PianoRollItem::handColor(int midi) const
+QColor PianoRollItem::handColor(const NoteEvent &note) const
 {
-    return midi < m_splitMidi ? QColor("#A78BFA") : QColor("#38BDF8");
+    return m_controller && m_controller->noteBelongsToLeftHand(note) ? QColor("#A78BFA") : QColor("#38BDF8");
 }
 
-QColor PianoRollItem::handEdgeColor(int midi) const
+QColor PianoRollItem::handEdgeColor(const NoteEvent &note) const
 {
-    return midi < m_splitMidi ? QColor("#DDD6FE") : QColor("#BAE6FD");
+    return m_controller && m_controller->noteBelongsToLeftHand(note) ? QColor("#DDD6FE") : QColor("#BAE6FD");
 }
 
 QColor PianoRollItem::feedbackColor(FeedbackKind kind) const

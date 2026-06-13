@@ -13,7 +13,6 @@ class PianoRollItem : public QQuickPaintedItem {
     Q_PROPERTY(qreal rollSpeedScale READ rollSpeedScale WRITE setRollSpeedScale NOTIFY rollSettingsChanged)
     Q_PROPERTY(qreal lookAheadBeats READ lookAheadBeats WRITE setLookAheadBeats NOTIFY rollSettingsChanged)
     Q_PROPERTY(bool showBeatRuler READ showBeatRuler WRITE setShowBeatRuler NOTIFY rollSettingsChanged)
-    Q_PROPERTY(int splitMidi READ splitMidi WRITE setSplitMidi NOTIFY rollSettingsChanged)
     Q_PROPERTY(QString handDisplayMode READ handDisplayMode WRITE setHandDisplayMode NOTIFY rollSettingsChanged)
 
 public:
@@ -27,8 +26,6 @@ public:
     void setLookAheadBeats(qreal beats);
     bool showBeatRuler() const { return m_showBeatRuler; }
     void setShowBeatRuler(bool visible);
-    int splitMidi() const { return m_splitMidi; }
-    void setSplitMidi(int midi);
     QString handDisplayMode() const { return m_handDisplayMode; }
     void setHandDisplayMode(const QString &mode);
 
@@ -55,8 +52,8 @@ private:
     qreal keyX(int midi, qreal whiteKeyWidth) const;
     QRectF noteRect(int midi, double startBeat, double durationBeat, double currentBeat,
                    qreal whiteKeyWidth, qreal fallTop, qreal strikeY, qreal pixelsPerBeat) const;
-    QColor handColor(int midi) const;
-    QColor handEdgeColor(int midi) const;
+    QColor handColor(const NoteEvent &note) const;
+    QColor handEdgeColor(const NoteEvent &note) const;
     QColor feedbackColor(FeedbackKind kind) const;
     void drawFeedback(QPainter *painter, const QRectF &bounds, qreal strikeY);
     void triggerFeedbackFromStatus();
@@ -70,7 +67,6 @@ private:
     qreal m_rollSpeedScale = 1.0;
     qreal m_lookAheadBeats = 7.0;
     bool m_showBeatRuler = true;
-    int m_splitMidi = 60;
     QString m_handDisplayMode = QStringLiteral("target");
     QString m_feedbackText;
     FeedbackKind m_feedbackKind = FeedbackKind::None;

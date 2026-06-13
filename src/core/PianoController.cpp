@@ -153,6 +153,47 @@ qint64 PianoController::expectedTickValue() const
     return isPracticeMode() ? m_practice.expectedTick() : -1;
 }
 
+bool PianoController::noteBelongsToLeftHand(const NoteEvent &note) const
+{
+    return HandPractice::noteIsLeftHand(note, m_handSplitMidi);
+}
+
+bool PianoController::rollNoteMatchesTarget(const NoteEvent &note) const
+{
+    return HandPractice::noteMatchesFilter(note, currentHandFilter());
+}
+
+bool PianoController::rollNoteExpected(const NoteEvent &note) const
+{
+    if (!isPracticeMode()) return false;
+
+    const QVector<NoteEvent> expected = m_practice.expectedNotes();
+    return std::any_of(expected.begin(), expected.end(), [&](const NoteEvent &expectedNote) {
+        return HandPractice::sameNoteIdentity(note, expectedNote);
+    });
+}
+
+bool PianoController::rollNoteActive(const NoteEvent &note) const
+{
+    if (isPracticeMode() && !rollNoteMatchesTarget(note)) {
+        return false;
+    }
+
+    const qint64 currentTick = m_playbackEngine.currentTick();
+    return currentTick >= note.startTick &&
+        currentTick <= note.startTick + note.durationTick;
+}
+
+bool PianoController::rollNoteCompleted(const NoteEvent &note) const
+{
+    return note.played && rollNoteMatchesTarget(note);
+}
+
+bool PianoController::rollNoteReference(const NoteEvent &note) const
+{
+    return m_handPracticeEnabled && !rollNoteMatchesTarget(note);
+}
+
 void PianoController::setPlaybackSpeed(int speed)
 {
     if (!m_playbackEngine.setPlaybackSpeed(speed)) return;
@@ -248,9 +289,7 @@ void PianoController::setHandPracticeEnabled(bool enabled)
 
 void PianoController::setHandPracticeSide(const QString &side)
 {
-    const QString normalized = side == QStringLiteral("left")
-        ? QStringLiteral("left")
-        : QStringLiteral("right");
+    const QString normalized = HandPractice::normalizeSideName(side);
     if (m_handPracticeSide == normalized) return;
 
     const bool restartSession = m_playing && isPracticeMode() && m_handPracticeEnabled;
@@ -277,7 +316,7 @@ void PianoController::setHandPracticeSide(const QString &side)
 
 void PianoController::setHandSplitMidi(int midi)
 {
-    const int normalized = qBound(0, midi, 127);
+    const int normalized = HandPractice::normalizeSplitMidi(midi);
     if (m_handSplitMidi == normalized) return;
 
     const bool restartSession = m_playing && isPracticeMode() && m_handPracticeEnabled;
@@ -445,9 +484,7 @@ void PianoController::seekBeat(double beat)
     resetPracticeState(false, false);
     if (isPracticeMode()) preparePracticeAtCurrentPosition();
     if (restartSession) beginPracticeSession();
-    for (auto &note : m_notes) {
-        note.played = note.startTick < m_playbackEngine.currentTick();
-    }
+    markNotesPlayedBeforeTick(m_playbackEngine.currentTick());
 
     refreshActiveNotes();
     emit positionChanged();
@@ -801,6 +838,12 @@ QVariantMap PianoController::noteToVariant(const NoteEvent &note) const
     map.insert(QStringLiteral("track"), note.track);
     map.insert(QStringLiteral("channel"), note.channel);
     map.insert(QStringLiteral("played"), note.played);
+    map.insert(QStringLiteral("leftHand"), noteBelongsToLeftHand(note));
+    map.insert(QStringLiteral("targetHand"), rollNoteMatchesTarget(note));
+    map.insert(QStringLiteral("expected"), rollNoteExpected(note));
+    map.insert(QStringLiteral("active"), rollNoteActive(note));
+    map.insert(QStringLiteral("completed"), rollNoteCompleted(note));
+    map.insert(QStringLiteral("reference"), rollNoteReference(note));
     return map;
 }
 
@@ -813,8 +856,8 @@ QVariantList PianoController::expectedNotesForHand(bool leftHand) const
 
     const QVector<NoteEvent> expected = m_practice.expectedNotes();
     for (const auto &note : expected) {
-        const bool isLeft = note.midi < m_handSplitMidi;
-        if (isLeft == leftHand) {
+        const HandPractice::Side side = leftHand ? HandPractice::Side::Left : HandPractice::Side::Right;
+        if (HandPractice::noteMatchesSide(note, side, m_handSplitMidi)) {
             list.push_back(noteToVariant(note));
         }
     }
@@ -913,6 +956,10 @@ void PianoController::preparePracticeAtCurrentPosition()
 
 void PianoController::evaluatePracticeNote(int midi, int velocity)
 {
+    if (!midiMatchesCurrentHand(midi)) {
+        return;
+    }
+
     QVector<PracticeNoteResult> results;
     if (isRhythmPracticeMode()) {
         results = m_practice.noteOnRhythmDetailed(
@@ -971,9 +1018,7 @@ void PianoController::evaluatePracticeNote(int midi, int velocity)
     }
 
     if (completion) {
-        for (auto &note : m_notes) {
-            if (note.startTick == completion->completedTick) note.played = true;
-        }
+        markNotesPlayedAtCompletedTick(completion->completedTick);
 
         const qint64 nextTick = completion->songComplete
             ? m_playbackEngine.totalTicks()
@@ -1020,7 +1065,9 @@ void PianoController::handleRhythmMisses(qint64 currentTick)
         appendPracticeEvent(result);
         loopSpeedAdjusted = registerLoopJudgement(result) || loopSpeedAdjusted;
         for (auto &note : m_notes) {
-            if (note.startTick == result.completedTick && note.midi == result.expectedMidi) {
+            if (note.startTick == result.completedTick &&
+                note.midi == result.expectedMidi &&
+                rollNoteMatchesTarget(note)) {
                 note.played = true;
             }
         }
@@ -1052,24 +1099,39 @@ void PianoController::rebuildPracticeSongForHand()
 
 QVector<NoteEvent> PianoController::practiceNotesForCurrentHand() const
 {
-    if (!m_handPracticeEnabled) {
-        return m_notes;
-    }
-
-    QVector<NoteEvent> filtered;
-    filtered.reserve(m_notes.size());
-    for (const NoteEvent &note : m_notes) {
-        if (noteMatchesSelectedHand(note)) {
-            filtered.push_back(note);
-        }
-    }
-    return filtered;
+    return HandPractice::filterNotes(m_notes, currentHandFilter());
 }
 
-bool PianoController::noteMatchesSelectedHand(const NoteEvent &note) const
+HandPractice::Filter PianoController::currentHandFilter() const
 {
-    const bool left = note.midi < m_handSplitMidi;
-    return m_handPracticeSide == QStringLiteral("left") ? left : !left;
+    HandPractice::Filter filter;
+    filter.enabled = m_handPracticeEnabled;
+    filter.side = HandPractice::sideFromName(m_handPracticeSide);
+    filter.splitMidi = m_handSplitMidi;
+    return filter;
+}
+
+bool PianoController::midiMatchesCurrentHand(int midi) const
+{
+    return HandPractice::midiMatchesFilter(midi, currentHandFilter());
+}
+
+void PianoController::markNotesPlayedAtCompletedTick(qint64 completedTick)
+{
+    const HandPractice::Filter filter = currentHandFilter();
+    for (auto &note : m_notes) {
+        if (HandPractice::noteMatchesCompletedStep(note, completedTick, filter)) {
+            note.played = true;
+        }
+    }
+}
+
+void PianoController::markNotesPlayedBeforeTick(qint64 tick)
+{
+    const HandPractice::Filter filter = currentHandFilter();
+    for (auto &note : m_notes) {
+        note.played = note.startTick < tick && HandPractice::noteMatchesFilter(note, filter);
+    }
 }
 
 QString PianoController::handPracticeLabel() const
@@ -1386,9 +1448,7 @@ void PianoController::seekToLoopStart(bool resetStats)
     }
 
     const qint64 currentTick = m_playbackEngine.currentTick();
-    for (auto &note : m_notes) {
-        note.played = note.startTick < currentTick;
-    }
+    markNotesPlayedBeforeTick(currentTick);
 
     refreshActiveNotes();
     emit positionChanged();

@@ -342,7 +342,6 @@ ApplicationWindow {
                             rollSpeedScale: PianoRollSettings.speedScale
                             lookAheadBeats: PianoRollSettings.lookAheadBeats
                             showBeatRuler: PianoRollSettings.beatRulerVisible
-                            splitMidi: PianoRollSettings.splitMidi
                             handDisplayMode: PianoRollSettings.handDisplayMode
                         }
 
